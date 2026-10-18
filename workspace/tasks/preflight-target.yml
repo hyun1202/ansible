@@ -1,0 +1,43 @@
+# 신규 구축 대상의 OS·계정·공간을 검사합니다. 파일이나 패키지는 변경하지 않습니다.
+---
+- name: 대상 OS와 서비스 관리자 확인
+  ansible.builtin.setup:
+    # 필요한 fact만 수집합니다.
+    gather_subset: [min]
+- name: Rocky Linux 8 대상 확인
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'Rocky'
+      - ansible_facts.distribution_major_version == '8'
+    fail_msg: 이 설치 흐름은 Rocky Linux 8용입니다. inventory 대상을 확인하세요.
+- name: 서비스 소유자와 실행 계정 확인
+  ansible.builtin.command:
+    argv: [getent, passwd, '{{ item }}']
+  # 계정은 자동 생성하지 않고 사전에 준비되었는지 확인합니다.
+  loop: '{{ (common_services | map(attribute="owner") | list + common_services | map(attribute="start_user", default="deploy") | list) | unique }}'
+  when: "'common_services' in enabled_roles"
+  changed_when: false
+- name: 서비스 그룹 확인
+  ansible.builtin.command:
+    argv: [getent, group, '{{ item }}']
+  loop: '{{ common_services | map(attribute="group") | unique | list }}'
+  when: "'common_services' in enabled_roles"
+  changed_when: false
+- name: 대상 경로의 파일 시스템 여유 공간 조회
+  ansible.builtin.command:
+    # 경로가 아직 없으면 가장 가까운 기존 상위 경로의 여유 공간을 확인합니다.
+    argv:
+      - '{{ ansible_python_interpreter | default("/usr/bin/python3.9") }}'
+      - -c
+      - 'import os,shutil,sys; p=os.path.abspath(sys.argv[1]); exec("while not os.path.exists(p): p=os.path.dirname(p)"); print(shutil.disk_usage(p).free)'
+      - '{{ item }}'
+  loop: '{{ ([staging_root] + ([nginx_config_dir, nginx_static_dir] if "nginx" in enabled_roles else []) + (common_services | map(attribute="path") | list if "common_services" in enabled_roles else [])) | unique }}'
+  register: target_disk_checks
+  changed_when: false
+- name: 최소 여유 공간 확인
+  ansible.builtin.assert:
+    that: item.stdout | int >= minimum_free_bytes | int
+    fail_msg: '{{ item.item }}의 여유 공간이 부족합니다. 백업·설치 용량을 고려해 확보하세요.'
+  loop: '{{ target_disk_checks.results }}'
+  loop_control:
+    label: '{{ item.item }}'

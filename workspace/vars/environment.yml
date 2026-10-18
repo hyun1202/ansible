@@ -25,3 +25,10 @@ nginx_binary: /usr/sbin/nginx
 nginx_check_base_url: http://127.0.0.1
 # 기본 주소 뒤에 붙여 각각 HTTP 200 응답을 확인할 경로 목록입니다.
 nginx_check_paths: [/, /static/app.css]
+
+# 사전 검사의 최소 여유 공간입니다. 실제 수집본·백업 크기에 맞춰 늘리세요 (기본 1 GiB).
+minimum_free_bytes: 1073741824
+# 신규 구축 시 누락된 공통 패키지만 설치합니다. 이미 설치된 패키지는 업데이트하지 않습니다.
+bootstrap_packages: [rsync, curl, acl, java-11-openjdk-headless]
+# Java 11을 명시적으로 사용할 경로입니다. 시스템의 기본 Java 선택은 변경하지 않습니다.
+java_home: /usr/lib/jvm/jre-11-openjdk
