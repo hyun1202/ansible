@@ -1,5 +1,0 @@
----
-- name: nginx 전용 fetch 진입점
-  ansible.builtin.import_playbook: ../fetch.yml
-  vars:
-    role_selection: [nginx]

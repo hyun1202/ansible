@@ -1,4 +1,0 @@
----
-- ansible.builtin.import_playbook: fetch-nginx.yml
-- ansible.builtin.import_playbook: upload-nginx.yml
-- ansible.builtin.import_playbook: apply-nginx.yml

@@ -18,7 +18,7 @@
   - name: 선택한 role의 단계 실행
     ansible.builtin.include_role:
       name: '{{ service_role }}'
-    loop: '{{ role_selection | default(enabled_roles) }}'
+    loop: '{{ enabled_roles }}'
     loop_control:
       loop_var: service_role
     vars:

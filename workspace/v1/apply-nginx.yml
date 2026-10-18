@@ -1,5 +1,0 @@
----
-- name: nginx 전용 apply 진입점
-  ansible.builtin.import_playbook: ../apply.yml
-  vars:
-    role_selection: [nginx]

@@ -1,5 +1,0 @@
----
-- name: nginx 전용 upload 진입점
-  ansible.builtin.import_playbook: ../upload.yml
-  vars:
-    role_selection: [nginx]

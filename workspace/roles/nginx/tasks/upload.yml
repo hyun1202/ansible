@@ -8,7 +8,7 @@
 - name: 수집 완료 표시가 없으면 중단
   ansible.builtin.assert:
     that: collection_complete.stat.exists
-    fail_msg: 먼저 fetch.yml 또는 v1/fetch-nginx.yml을 실행하여 수집을 완료하세요.
+    fail_msg: 먼저 fetch.yml을 실행하여 수집을 완료하세요.
   run_once: true
 - name: deploy 전용 업로드 폴더 준비
   ansible.builtin.file:
