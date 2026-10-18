@@ -14,6 +14,8 @@ services:
     depends_on:
       target:
         condition: service_healthy
+      target2:
+        condition: service_healthy
     networks: [lab]
 
   target:
@@ -22,6 +24,19 @@ services:
     volumes:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_ed25519_key:/run/lab/host_key:ro
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks: [lab]
+
+  target2:
+    build: ./target
+    hostname: target2
+    volumes:
+      - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
+      - ./.lab/ssh_host_target2_ed25519_key:/run/lab/host_key:ro
     healthcheck:
       test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
       interval: 3s

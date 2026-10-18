@@ -1,11 +1,12 @@
 # Ansible 첫 실습
 
-이 프로젝트는 Ubuntu 24.04 컨테이너 두 개로 구성됩니다.
+이 프로젝트는 Ubuntu 24.04 컨테이너 세 개(제어 노드 1대, 대상 노드 2대)로 구성됩니다.
 
 - `control`: Ansible Core 2.19.14를 실행하는 제어 노드
 - `target`: SSH와 Python이 준비된 대상 노드. 접속 계정은 `ansible`입니다.
+- `target2`: 두 번째 대상 노드. 별도의 서버 호스트 키를 사용합니다.
 
-Compose 프로젝트 이름은 `ansible-study`입니다. 호스트 포트는 공개하지 않고, 두 컨테이너는 프로젝트 전용 네트워크에서 통신합니다. 기존 컨테이너와 운영 서버의 인증 정보는 사용하지 않습니다. 패키지 설치를 위한 외부 인터넷 연결은 가능합니다.
+Compose 프로젝트 이름은 `ansible-study`입니다. 호스트 포트는 공개하지 않고, 세 컨테이너는 프로젝트 전용 네트워크에서 통신합니다. 기존 컨테이너와 운영 서버의 인증 정보는 사용하지 않습니다. 패키지 설치를 위한 외부 인터넷 연결은 가능합니다.
 
 ## 시작하기
 
@@ -25,7 +26,7 @@ docker-compose ps
 docker-compose exec control ansible lab -m ansible.builtin.ping
 ```
 
-`target | SUCCESS`와 `"ping": "pong"`이 나오면 성공입니다. 이 ping은 ICMP ping이 아니라 SSH로 연결해서 대상의 Python에서 Ansible 모듈을 실행하는 검사입니다.
+`target`과 `target2` 모두 `SUCCESS`와 `"ping": "pong"`이 나오면 성공입니다. 이 ping은 ICMP ping이 아니라 SSH로 연결해서 대상의 Python에서 Ansible 모듈을 실행하는 검사입니다.
 
 - `control`: 명령을 실행할 컨테이너
 - `ansible`: Ansible 실행 명령
@@ -47,6 +48,7 @@ SSH 대상 서버의 공개키를 미리 등록해서 호스트 키 검증을 �
 ```sh
 docker-compose exec control bash
 docker-compose exec --user ansible target bash
+docker-compose exec --user ansible target2 bash
 ```
 
 ## 중지와 재시작
