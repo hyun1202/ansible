@@ -1,4 +1,4 @@
-# 전체 구축 전 읽기 전용 검사입니다. source와 lab inventory가 모두 필요합니다.
+# 전체 구축 전 읽기 전용 검사입니다. inventory.ini의 config_sources와 lab 그룹을 사용합니다.
 ---
 # inventory 누락으로 원본 검사가 통째로 건너뛰어지는 것을 막습니다.
 - name: 필수 inventory 그룹 확인
@@ -11,7 +11,7 @@
         that:
           - groups.get('config_sources', []) | length == 1
           - groups.get('lab', []) | length > 0
-        fail_msg: inventory.ini와 inventory-source.ini를 모두 지정하세요.
+        fail_msg: inventory.ini에 config_sources 원본 한 대와 lab 대상 한 대 이상을 지정하세요.
 
 - name: 수집 원본 사전 검사
   hosts: config_sources

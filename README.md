@@ -50,10 +50,12 @@ cd /Users/hyun/Study/ansible
 
 이 Mac은 Colima와 `/opt/homebrew/bin/docker-compose`를 사용합니다. 타겟의 nginx는 실습 환경 구성 시 미리 설치하고 실행합니다.
 
+서버 목록은 `workspace/inventory.ini` 하나로 관리합니다. `config_sources`는 수집 원본, `lab`은 설치·업로드·반영 대상입니다. 각 플레이북의 `hosts`가 실행 그룹을 선택합니다. `ansible.cfg`가 이 파일을 기본 inventory로 사용하므로 아래 명령에서는 `-i`를 생략합니다.
+
 ## 전체 실습을 한 번에 실행
 
 ```sh
-/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini setup.yml
+/opt/homebrew/bin/docker-compose exec control ansible-playbook setup.yml
 ```
 
 사전 검사 → 누락 패키지·Java 11 설치 → 수집 → 업로드 → su 전환 → sudo로 설정·정적 파일 복사 및 교체 → nginx -t → reload → HTML·CSS HTTP 200 확인 순서입니다. 설치 단계와 최종 반영 단계에서 각각 관리자 계정명과 su 및 sudo 비밀번호를 입력합니다. 실습에서는 두 비밀번호가 같습니다.
@@ -62,13 +64,13 @@ cd /Users/hyun/Study/ansible
 
 ```sh
 # 1. 원본과 신규 구축 대상의 준비 상태 확인
-/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini preflight.yml
+/opt/homebrew/bin/docker-compose exec control ansible-playbook preflight.yml
 
 # 2. 누락된 패키지와 Java 11 설치
 /opt/homebrew/bin/docker-compose exec control ansible-playbook install.yml
 
 # 3. 최신 nginx 설정과 정적 파일 수집
-/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory-source.ini fetch.yml
+/opt/homebrew/bin/docker-compose exec control ansible-playbook fetch.yml
 
 # 4. 두 신규 서버의 deploy 폴더에 업로드
 /opt/homebrew/bin/docker-compose exec control ansible-playbook upload.yml
