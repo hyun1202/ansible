@@ -40,6 +40,8 @@
   vars_files:
   - vars/environment.yml
   - vars/services.yml
+  # sudo 실행 옵션을 공통 변수에서 읽습니다.
+  - vars/execution.yml
   # install.yml 단독 실행 때도 OS와 계정·공간을 확인합니다.
   pre_tasks:
     - name: 대상 사전 검사
@@ -72,12 +74,13 @@
         - name: 누락된 패키지 설치
           ansible.builtin.command:
             # 비밀번호는 명령 인자가 아닌 표준 입력으로 전달합니다.
-            argv: '{{ ["sudo", "-S", "-k", "-p", "", "--", "dnf", "install", "-y"] + missing_packages }}'
+            argv: '{{ sudo_root_argv + ["dnf", "install", "-y"] + missing_packages }}'
             stdin: '{{ admin_sudo_password }}'
           when: missing_packages | length > 0
         - name: 실제 서버의 nginx 자동 시작 준비
           ansible.builtin.command:
-            argv: [sudo, -S, -k, -p, '', --, systemctl, enable, --now, nginx]
+            argv: >-
+              {{ sudo_root_argv + ["systemctl", "enable", "--now", "nginx"] }}
             stdin: '{{ admin_sudo_password }}'
           # 컨테이너에서는 entrypoint가 nginx를 실행하므로 systemctl을 쓰지 않습니다.
           when:

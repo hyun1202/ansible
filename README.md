@@ -129,6 +129,10 @@ workspace/
 
 상위의 setup.yml, fetch.yml, upload.yml, apply.yml은 현재 사용하는 진입 플레이북입니다. 대상 서버와 단계, 비밀번호 입력을 담당하며 role이 실제 작업을 수행합니다.
 
+반영 명령의 공통 sudo 옵션은 `vars/execution.yml`에서 관리합니다. 개별 작업은 `sudo_root_argv + ["cp", ...]`처럼 실제 명령만 덧붙입니다. 서비스 실행 계정·Java 환경·작업 폴더 설정은 `roles/common_services/defaults/main.yml`의 `service_command_prefix`를 종료·시작·확인 명령에서 재사용합니다.
+
+nginx는 `restore-directory.yml`로 설정·정적 파일의 복구 절차를 공유하고, `validate-reload.yml`로 새 설정과 복구한 설정 모두 동일하게 검사 후 reload합니다. 계정 전환과 비밀번호 숨김은 이를 호출하는 apply 블록에서 상속합니다.
+
 common_services의 main.yml이 서비스 목록을 반복하면서 해당 단계 파일을 직접 호출합니다. 중간 호출 전용 파일 없이 main → fetch/upload/apply로 실행됩니다.
 
 ### 경로 변경: vars/environment.yml

@@ -2,3 +2,11 @@
 ---
 # 공통 role로 처리할 서비스 목록입니다. 각 항목에 fetch → upload → apply를 적용하며 []이면 대상이 없습니다.
 common_services: []
+
+# 서비스 제어 명령에 공통으로 붙는 계정·Java 환경·작업 디렉터리 설정입니다.
+# $1은 서비스 폴더이며 shift 후 $@에 stop/start/check 명령과 인자가 남습니다.
+service_command_prefix: >-
+  {{ sudo_argv + ['-u', service.start_user | default(service.owner), '--',
+     'env', 'JAVA_HOME=' + java_home,
+     'PATH=' + java_home + '/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+     '/bin/sh', '-c', 'cd "$1" && shift && exec "$@"', 'sh', service.path] }}
