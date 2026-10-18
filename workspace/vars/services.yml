@@ -1,24 +1,54 @@
 ---
-# 실제 경로·계정·실행 방법을 확인한 후 아래 목록에 추가합니다.
-# 비어 있으면 common_services role은 작업하지 않습니다.
-common_services: []
+# 예시: 원본과 신규 서버 모두 /home/deploy 아래에 서비스가 있다고 가정합니다.
+# 실제 폴더를 생성하거나 실행하는 설정은 아닙니다. 수집 전에 경로를 확인하세요.
+# 소유자와 실행 계정은 모두 deploy로 가정합니다.
+# start_argv와 check_argv는 실제 스크립트 이름을 확인한 뒤 채우세요.
+# 제외 목록도 예시이므로 서비스의 실제 로그·데이터 경로에 맞춰 수정하세요.
+common_services:
+  - name: loki
+    path: /home/deploy/loki
+    owner: deploy
+    group: deploy
+    excludes: ["logs/", "data/", "wal/"]
+    start_user: deploy
+    start_argv: []  # 예: ["./start.sh"]
+    check_argv: []  # 예: ["./check.sh"]
 
-# 예시입니다. 실제 운영 경로가 아닙니다.
-# common_services:
-#   - name: alloy
-#     path: /opt/alloy
-#     owner: alloy
-#     group: alloy
-#     excludes: ["logs/", "data/"]
-#     start_user: alloy
-#     start_argv: ["./start.sh"]
-#     check_argv: ["./check.sh"]
-#   - name: deploy
-#     path: /opt/deploy
-#     owner: deploy
-#     group: deploy
-#     excludes: []
-#     start_argv: []  # 복사만 수행
-#     check_argv: []
-# Loki, Scouter, node exporter도 같은 형식으로 추가합니다.
-# source_path를 따로 지정하지 않으면 원본도 path와 같은 경로를 사용합니다.
+  - name: alloy
+    path: /home/deploy/alloy
+    owner: deploy
+    group: deploy
+    excludes: ["logs/", "data/"]
+    start_user: deploy
+    start_argv: []  # 예: ["./start.sh"]
+    check_argv: []
+
+  - name: scouter
+    path: /home/deploy/scouter
+    owner: deploy
+    group: deploy
+    excludes: ["logs/", "database/"]
+    start_user: deploy
+    start_argv: []  # 예: ["./startup.sh"] 또는 ["./agent.host/host.sh"]
+    check_argv: []
+
+  - name: node_exporter
+    path: /home/deploy/node_exporter
+    owner: deploy
+    group: deploy
+    excludes: ["logs/"]
+    start_user: deploy
+    start_argv: []  # 예: ["./start.sh"]
+    check_argv: []
+
+  - name: deploy_scripts
+    path: /home/deploy/deploy
+    owner: deploy
+    group: deploy
+    excludes: []
+    start_argv: []  # 배포 쉘은 복사만 하고 자동 실행하지 않습니다.
+    check_argv: []
+
+# 원본 경로만 다르면 해당 항목에 source_path를 추가하세요.
+# source_path: /원본서버의/서비스폴더
+# 원본과 신규 서버가 같으면 path 하나만 있으면 됩니다.

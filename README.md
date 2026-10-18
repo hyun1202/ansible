@@ -126,12 +126,12 @@ nginx 경로를 바꾸면 nginx.conf 안의 include/root/pid 경로 및 nginx �
 
 ### 서비스 추가: vars/services.yml
 
-실제 서비스 경로와 실행 명령을 아직 전달받지 않아 `common_services: []`로 비워 두었습니다. 이 상태에서는 nginx만 작업하고 공통 서비스는 건너뜁니다. 파일 안의 주석 예시를 실제 값으로 채우세요. 아래는 설명용 예시이며 실제 운영 경로가 아닙니다.
+`services.yml`에는 /home/deploy 아래의 loki, alloy, scouter, node_exporter, deploy 폴더를 가정한 예시 다섯 개가 들어 있습니다. 실제 서버에 이 폴더들을 생성하지는 않았습니다. 전체 실행 전에 경로와 제외 목록을 확인하세요. 현재 start_argv와 check_argv가 비어 있어 복사만 하고 실행·기동 검증은 생략합니다. 공통 서비스를 건너뛰려면 common_services: []로 바꾸거나 environment.yml의 enabled_roles를 [nginx]로 지정합니다. 아래도 설명용 예시입니다.
 
 ```yaml
 common_services:
   - name: alloy
-    path: /opt/alloy
+    path: /home/deploy/alloy
     owner: alloy
     group: alloy
     excludes: ["logs/", "data/"]
@@ -139,7 +139,7 @@ common_services:
     start_argv: ["./start.sh"]
     check_argv: ["./check.sh"]
   - name: deploy
-    path: /opt/deploy
+    path: /home/deploy/deploy
     owner: deploy
     group: deploy
     start_argv: []
