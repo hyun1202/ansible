@@ -1,5 +1,18 @@
 # 전체 구축 전 읽기 전용 검사입니다. source와 lab inventory가 모두 필요합니다.
 ---
+# inventory 누락으로 원본 검사가 통째로 건너뛰어지는 것을 막습니다.
+- name: 필수 inventory 그룹 확인
+  hosts: localhost
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: 원본 한 대와 대상 한 대 이상 확인
+      ansible.builtin.assert:
+        that:
+          - groups.get('config_sources', []) | length == 1
+          - groups.get('lab', []) | length > 0
+        fail_msg: inventory.ini와 inventory-source.ini를 모두 지정하세요.
+
 - name: 수집 원본 사전 검사
   hosts: config_sources
   gather_facts: false
@@ -23,6 +36,9 @@
       loop: '{{ [nginx_source_config_dir, nginx_source_static_dir] if "nginx" in enabled_roles else [] }}'
       # 서비스별 source_path 기본값은 아래 작업에서 따로 처리합니다.
       changed_when: false
+    - name: 공통 서비스 정의 검사
+      ansible.builtin.import_tasks: roles/common_services/tasks/validate.yml
+      when: '"common_services" in enabled_roles'
     - name: 공통 서비스 원본과 실행 파일 확인
       ansible.builtin.include_tasks: tasks/preflight-service.yml
       loop: '{{ common_services }}'

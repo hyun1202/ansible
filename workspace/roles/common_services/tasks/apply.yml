@@ -73,33 +73,28 @@
     changed_when: false
     # 기본 실패 판정 대신 이 조건으로 실패 여부를 판단합니다. test의 0은 존재, 1은 없음입니다.
     failed_when: service_existing.rc not in [0, 1]
-  # 실행 로그에 표시할 작업 이름입니다.
+  # 기존 폴더가 있으면 그 안의 stop.sh를 실행합니다. 실패 시 교체하지 않습니다.
+  - name: 기존 서비스 종료
+    ansible.builtin.command:
+      argv: '{{ ["sudo", "-S", "-k", "-p", "", "-u", service.start_user | default(service.owner), "--", "env", "JAVA_HOME=" + java_home, "PATH=" + java_home + "/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "/bin/sh", "-c", ''cd "$1" && shift && exec "$@"'', "sh", service.path] + service.stop_argv }}'
+    when:
+      - service_existing.rc == 0
+      - service.stop_argv | default([]) | length > 0
+  # 종료된 기존 폴더를 통째로 보관합니다. 새 수집본에 없는 예전 파일도 백업에 남습니다.
   - name: 기존 서비스 폴더 백업
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: [sudo, -S, -k, -p, '', --, cp, -a, '{{ service.path }}', '{{ service_stage.stdout }}/previous']
-    # 이 조건이 참일 때만 실행합니다. is defined는 변수 존재, is succeeded는 성공, rc == 0은 명령 성공을 뜻합니다.
+      argv: [sudo, -S, -k, -p, '', --, mv, '{{ service.path }}', '{{ service_stage.stdout }}/previous']
     when: service_existing.rc == 0
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 서비스 최종 경로 준비
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: [sudo, -S, -k, -p, '', --, mkdir, -p, '{{ service.path }}']
-  # 실행 로그에 표시할 작업 이름입니다.
-  # payload/.의 내용만 최종 폴더에 복사합니다. 기존 폴더의 다른 파일은 삭제하지 않습니다.
+  # 덮어쓰기 병합이 아니라 디렉터리 전체 교체입니다. 제외한 로그·데이터는 새 폴더에 없습니다.
   - name: 서비스 파일 최종 배치
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: [sudo, -S, -k, -p, '', --, cp, -a, '{{ service_stage.stdout }}/payload/.', '{{ service.path }}/']
+      argv: [sudo, -S, -k, -p, '', --, mv, '{{ service_stage.stdout }}/payload', '{{ service.path }}']
   # 실행 로그에 표시할 작업 이름입니다.
   - name: 지정한 계정으로 서비스 실행
     # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
       # sudo -u로 실행 계정을 지정하고 서비스 폴더에서 명령을 실행합니다. $1은 경로, shift 후 $@는 명령과 인자입니다.
-      argv: '{{ [''sudo'', ''-S'', ''-k'', ''-p'', '''', ''-u'', service.start_user | default(service.owner), ''--'', ''/bin/sh'', ''-c'',
+      argv: '{{ [''sudo'', ''-S'', ''-k'', ''-p'', '''', ''-u'', service.start_user | default(service.owner), ''--'', ''env'', ''JAVA_HOME='' + java_home, ''PATH='' + java_home + ''/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'', ''/bin/sh'', ''-c'',
         ''cd "$1" && shift && exec "$@"'', ''sh'', service.path] + service.start_argv }}'
     # 이 조건이 참일 때만 실행합니다. is defined는 변수 존재, is succeeded는 성공, rc == 0은 명령 성공을 뜻합니다.
     when: service.start_argv | default([]) | length > 0
@@ -108,7 +103,7 @@
     # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
       # sudo -u로 실행 계정을 지정하고 서비스 폴더에서 명령을 실행합니다. $1은 경로, shift 후 $@는 명령과 인자입니다.
-      argv: '{{ [''sudo'', ''-S'', ''-k'', ''-p'', '''', ''-u'', service.start_user | default(service.owner), ''--'', ''/bin/sh'', ''-c'',
+      argv: '{{ [''sudo'', ''-S'', ''-k'', ''-p'', '''', ''-u'', service.start_user | default(service.owner), ''--'', ''env'', ''JAVA_HOME='' + java_home, ''PATH='' + java_home + ''/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'', ''/bin/sh'', ''-c'',
         ''cd "$1" && shift && exec "$@"'', ''sh'', service.path] + service.check_argv }}'
     # 이 조건이 참일 때만 실행합니다. is defined는 변수 존재, is succeeded는 성공, rc == 0은 명령 성공을 뜻합니다.
     when: service.check_argv | default([]) | length > 0
@@ -129,7 +124,7 @@
     # 실패 이유를 알리고 현재 실행을 실패 처리합니다.
     ansible.builtin.fail:
       # 화면에 출력할 문자열입니다. {{ 변수 }} 부분은 실제 값으로 치환됩니다.
-      msg: '{{ service.name }} 적용 실패. 작업·백업 경로: {{ service_stage.stdout | default("생성 전") }}. 자동 중지·원복하지 않았습니다.'
+      msg: '{{ service.name }} 적용 실패. 작업·백업 경로: {{ service_stage.stdout | default("생성 전") }}. 자동 원복·재기동하지 않았습니다.'
     # true이면 입력값과 결과를 로그에서 숨깁니다. false인 안내 작업은 메시지를 보여줍니다.
     no_log: false
 # 실행 로그에 표시할 작업 이름입니다.
@@ -138,3 +133,10 @@
   ansible.builtin.debug:
     # 화면에 출력할 문자열입니다. {{ 변수 }} 부분은 실제 값으로 치환됩니다.
     msg: '{{ service.name }} → {{ service.path }} 배치 완료. 작업·백업: {{ service_stage.stdout }}'
+# 시작 명령의 종료 코드와 실제 서비스 정상 동작은 구분하여 안내합니다.
+- name: 서비스 실행 및 검증 상태 안내
+  ansible.builtin.debug:
+    msg: >-
+      {{ service.name }}:
+      {{ '시작 명령 완료' if service.start_argv | default([]) | length > 0 else '파일 배치만 수행' }} /
+      {{ '검증 명령 통과' if service.check_argv | default([]) | length > 0 else '정상 동작 검증 미설정 — 직접 확인 필요' }}

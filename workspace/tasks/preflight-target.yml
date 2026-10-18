@@ -10,12 +10,21 @@
       - ansible_facts.distribution == 'Rocky'
       - ansible_facts.distribution_major_version == '8'
     fail_msg: 이 설치 흐름은 Rocky Linux 8용입니다. inventory 대상을 확인하세요.
-- name: 서비스 소유자와 실행 계정 확인
+- name: 서비스 소유 계정 확인
   ansible.builtin.command:
-    argv: [getent, passwd, '{{ item }}']
-  # 계정은 자동 생성하지 않고 사전에 준비되었는지 확인합니다.
-  loop: '{{ (common_services | map(attribute="owner") | list + common_services | map(attribute="start_user", default="deploy") | list) | unique }}'
-  when: "'common_services' in enabled_roles"
+    argv: [getent, passwd, '{{ item.owner }}']
+  loop: '{{ common_services }}'
+  loop_control:
+    label: '{{ item.name }}'
+  when: '"common_services" in enabled_roles'
+  changed_when: false
+- name: 서비스 실행 계정 확인
+  ansible.builtin.command:
+    argv: [getent, passwd, '{{ item.start_user | default(item.owner) }}']
+  loop: '{{ common_services }}'
+  loop_control:
+    label: '{{ item.name }}'
+  when: '"common_services" in enabled_roles'
   changed_when: false
 - name: 서비스 그룹 확인
   ansible.builtin.command:
@@ -29,7 +38,14 @@
     argv:
       - '{{ ansible_python_interpreter | default("/usr/bin/python3.9") }}'
       - -c
-      - 'import os,shutil,sys; p=os.path.abspath(sys.argv[1]); exec("while not os.path.exists(p): p=os.path.dirname(p)"); print(shutil.disk_usage(p).free)'
+      - |
+        import os
+        import shutil
+        import sys
+        path = os.path.abspath(sys.argv[1])
+        while not os.path.exists(path):
+            path = os.path.dirname(path)
+        print(shutil.disk_usage(path).free)
       - '{{ item }}'
   loop: '{{ ([staging_root] + ([nginx_config_dir, nginx_static_dir] if "nginx" in enabled_roles else []) + (common_services | map(attribute="path") | list if "common_services" in enabled_roles else [])) | unique }}'
   register: target_disk_checks
@@ -41,3 +57,19 @@
   loop: '{{ target_disk_checks.results }}'
   loop_control:
     label: '{{ item.item }}'
+# 기존 폴더가 있는 서비스는 교체 전에 종료할 수 있어야 합니다.
+- name: 기존 서비스 종료 스크립트 확인
+  ansible.builtin.command:
+    argv:
+      - '{{ ansible_python_interpreter | default("/usr/bin/python3.9") }}'
+      - -c
+      - 'import os,sys; p=sys.argv[1]; f=os.path.join(p,sys.argv[2]); sys.exit(0 if not os.path.exists(p) or (os.path.isfile(f) and os.access(f,os.X_OK)) else 1)'
+      - '{{ item.path }}'
+      - '{{ (item.stop_argv | default([]) | first) | default("") }}'
+  loop: '{{ common_services }}'
+  loop_control:
+    label: '{{ item.name }}'
+  when:
+    - '"common_services" in enabled_roles'
+    - item.stop_argv | default([]) | length > 0
+  changed_when: false

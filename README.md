@@ -56,28 +56,44 @@ cd /Users/hyun/Study/ansible
 /opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini setup.yml
 ```
 
-수집 → 업로드 → su 전환 → sudo로 설정·정적 파일 복사 및 교체 → nginx -t → reload → HTML·CSS HTTP 200 확인 순서입니다. 최종 반영 단계에서 관리자 계정명과 su 및 sudo 비밀번호를 입력합니다. 실습에서는 두 비밀번호가 같습니다.
+사전 검사 → 누락 패키지·Java 11 설치 → 수집 → 업로드 → su 전환 → sudo로 설정·정적 파일 복사 및 교체 → nginx -t → reload → HTML·CSS HTTP 200 확인 순서입니다. 설치 단계와 최종 반영 단계에서 각각 관리자 계정명과 su 및 sudo 비밀번호를 입력합니다. 실습에서는 두 비밀번호가 같습니다.
 
 ## 단계별 실행
 
 ```sh
-# 1. 최신 nginx 설정과 정적 파일 수집
+# 1. 원본과 신규 구축 대상의 준비 상태 확인
+/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini preflight.yml
+
+# 2. 누락된 패키지와 Java 11 설치
+/opt/homebrew/bin/docker-compose exec control ansible-playbook install.yml
+
+# 3. 최신 nginx 설정과 정적 파일 수집
 /opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory-source.ini fetch.yml
 
-# 2. 두 신규 서버의 deploy 폴더에 업로드
+# 4. 두 신규 서버의 deploy 폴더에 업로드
 /opt/homebrew/bin/docker-compose exec control ansible-playbook upload.yml
 
-# 3. 관리자 계정 전환 후 최종 반영
+# 5. 관리자 계정 전환 후 최종 반영
 /opt/homebrew/bin/docker-compose exec control ansible-playbook apply.yml
 ```
 
-완료한 단계를 건너뛰려면 필요한 플레이북만 실행합니다. `setup.yml`은 항상 수집부터 다시 실행합니다. `apply.yml --limit target`으로 한 대만 먼저 반영할 수도 있습니다.
+완료한 단계를 건너뛰려면 필요한 플레이북만 실행합니다. `setup.yml`은 항상 사전 검사부터 다시 실행합니다. `apply.yml --limit target`으로 한 대만 먼저 반영할 수도 있습니다.
 
 수집 시작 시 `.complete` 표시를 지우고 설정과 정적 파일 모두 성공했을 때 다시 만듭니다. 업로드는 이 표시를 확인합니다. 수집·업로드·반영은 순서대로 실행하고 동시에 진행하지 않습니다.
 
 최종 반영은 한 대씩 처리합니다. su는 Ansible become으로, sudo는 `sudo -S` 표준 입력 인증으로 처리합니다. 비밀번호 관련 명령은 no_log로 숨기고 명령행 인자에 비밀번호를 넣지 않습니다. 계정 간 임시 파일 접근을 위해 acl을 설치합니다.
 
 기존 설정 및 정적 파일은 각 작업 디렉터리 옆의 `.backup` 경로로 보관합니다. 복사·배치·nginx 검사·reload 블록에서 실패하면 이미 백업한 항목을 복구하고 중단합니다. 이후 HTTP 확인 실패는 자동 원복하지 않습니다. 여러 서버 전체를 일괄 원복하지 않으며 앞서 성공한 서버는 유지됩니다. 백업과 진단용 작업 폴더는 자동 삭제하지 않습니다.
+
+## 패키지 준비와 Java 11
+
+신규 서비스 구축을 위한 흐름이며, 준비된 서버에 기존 패키지와 파일이 있을 수 있습니다. 설치된 패키지는 rpm으로 조회하고 누락된 것만 dnf install로 설치합니다. 기존 nginx 패키지를 재설치하지 않으며 설정·정적 파일은 apply 단계에서 교체합니다. 누락 패키지 설치 과정에서 의존성 패키지가 추가되거나 갱신될 수 있습니다.
+
+기본 설치 목록은 rsync, curl, acl, java-11-openjdk-headless이며 nginx role을 선택하면 nginx도 포함합니다. JAR 실행용 Java 11 런타임입니다. 컴파일 도구가 필요하면 bootstrap_packages에 java-11-openjdk-devel을 추가하세요. java_home은 /usr/lib/jvm/jre-11-openjdk이며 공통 서비스의 종료·시작·확인 명령에 JAVA_HOME과 PATH를 전달합니다. 시스템 전체 기본 Java는 변경하지 않습니다. 스크립트 내부에서 Java 경로를 직접 고정했다면 스크립트도 확인해야 합니다.
+
+SSH 접속 계정, su 가능한 관리자 계정과 sudo 권한, 호환되는 Python 및 계정 간 Ansible 임시 파일 접근에 필요한 ACL 설정은 미리 준비해야 합니다. 필요한 서비스 소유자·그룹도 자동 생성하지 않습니다. 실제 systemd 서버에서는 설치 단계가 nginx를 enable --now로 준비합니다. Docker 실습은 entrypoint가 nginx를 실행합니다. 공통 서비스의 부팅 시 자동 실행 등록은 포함하지 않습니다.
+
+사전 검사는 원본 폴더·스크립트 접근, Rocky 8 여부, 서비스 계정·그룹, 대상 파일 시스템 여유 공간을 확인합니다. minimum_free_bytes는 기본 1 GiB의 하한선이며 실제 파일 크기를 계산한 용량 보장은 아닙니다. 백업과 수집본 크기에 맞춰 조정하세요. 실제 서비스 폴더와 스크립트가 없는 현재 실습 source에서는 공통 서비스 검사가 실패하는 것이 정상입니다. nginx만 연습하려면 enabled_roles를 [nginx]로 지정하세요.
 
 ## 직접 확인
 
@@ -96,6 +112,8 @@ HTML에 `legacy nginx configuration v1`이 표시되고 CSS가 응답하면 정�
 ```text
 workspace/
 ├─ setup.yml                    # 전체 실행
+├─ preflight.yml / install.yml # 사전 검사와 패키지 준비
+├─ tasks/                      # 공통 사전 검사 작업
 ├─ fetch.yml / upload.yml / apply.yml
 ├─ vars/
 │  ├─ environment.yml           # role 선택, 공통 경로, nginx 경로·검증 주소
@@ -127,7 +145,7 @@ nginx 경로를 바꾸면 nginx.conf 안의 include/root/pid 경로 및 nginx �
 
 ### 서비스 추가: vars/services.yml
 
-`services.yml`에는 /home/deploy 아래의 loki, alloy, scouter, node_exporter, deploy 폴더를 가정한 예시 다섯 개가 들어 있습니다. 실제 서버에 이 폴더들을 생성하지는 않았습니다. 전체 실행 전에 경로와 제외 목록을 확인하세요. 현재 start_argv와 check_argv가 비어 있어 복사만 하고 실행·기동 검증은 생략합니다. 공통 서비스를 건너뛰려면 common_services: []로 바꾸거나 environment.yml의 enabled_roles를 [nginx]로 지정합니다. 아래도 설명용 예시입니다.
+`services.yml`에는 /home/deploy 아래의 loki, alloy, scouter, node_exporter, deploy 폴더를 가정한 예시 다섯 개가 들어 있습니다. 실제 서버에 이 폴더들을 생성하지는 않았습니다. 전체 실행 전에 경로와 제외 목록을 확인하세요. Loki·Alloy·Scouter·node exporter는 기존 폴더의 `./stop.sh`로 종료하고 새 폴더의 `./start.sh`로 시작합니다. 두 스크립트에 실행 권한이 필요합니다. deploy 항목은 파일만 배치합니다. check_argv는 아직 비어 있어 정상 동작 검증은 생략하며 결과에도 이를 명시합니다. 공통 서비스를 건너뛰려면 common_services: []로 바꾸거나 environment.yml의 enabled_roles를 [nginx]로 지정합니다. 아래도 설명용 예시입니다.
 
 ```yaml
 common_services:
@@ -137,6 +155,7 @@ common_services:
     group: alloy
     excludes: ["logs/", "data/"]
     start_user: alloy
+    stop_argv: ["./stop.sh"]
     start_argv: ["./start.sh"]
     check_argv: ["./check.sh"]
   - name: deploy
@@ -150,7 +169,7 @@ common_services:
 
 복사할 때 실행 권한과 심볼릭 링크를 보존하고 소유권을 owner/group으로 맞춥니다. 해당 사용자·그룹은 대상에 미리 있어야 합니다. 실행·검증 명령은 문자열 하나가 아니라 인자 목록이며, 서비스 폴더에서 start_user(생략 시 owner) 계정으로 실행됩니다. 시작 스크립트는 서비스를 기동한 후 종료되어야 합니다. start_argv가 비어 있으면 복사만 하며 deploy 스크립트를 자동 실행하지 않습니다. check_argv는 선택 사항으로, 정상일 때 종료 코드 0을 반환하는 명령을 지정합니다.
 
-공통 서비스는 기존 폴더를 백업한 뒤 파일을 덮어씁니다. 대상에서 파일을 삭제하지 않으므로 제외된 기존 로그·데이터를 유지하지만, 원본에서 사라진 일반 파일도 대상에 남을 수 있습니다. 신규 구축을 기준으로 합니다. 기존 폴더의 전체 백업에는 데이터도 포함되므로 기존 운영 서버 갱신용으로 무심코 실행하지 마세요. 서비스별 중지·복구 명령을 아직 모르므로 공통 서비스 실패 시 자동 중지·원복하지 않고 백업 위치를 알립니다. nginx는 기존 검사·원복 동작을 유지합니다.
+공통 서비스는 기존 폴더가 있으면 그 폴더의 stop.sh가 성공한 뒤 폴더 전체를 작업 경로의 previous로 옮겨 백업합니다. 준비한 수집본으로 최종 폴더를 통째로 교체하므로 원본에서 사라진 파일이나 제외한 로그·데이터는 새 폴더에 남지 않습니다. 기존 내용은 백업에 보관합니다. stop.sh는 이미 중지된 경우에도 성공하도록 작성해야 하며, start.sh는 서비스를 시작한 뒤 종료되어야 합니다. 종료 명령이 실패하면 교체하지 않습니다. 교체·시작·검증 실패 시 자동 원복이나 재기동을 하지 않고 작업·백업 경로를 알립니다. 해당 서비스가 중지된 상태일 수 있으므로 경로를 확인한 뒤 수동 복구합니다. nginx는 기존 검사·원복 동작을 유지합니다.
 
 일반 파일의 위치만 바뀌면 변수 파일만 수정하면 됩니다. Loki와 Alloy, Scouter, node exporter는 각 서비스마다 role이나 fetch 파일을 추가하지 않고 목록에 항목을 추가합니다.
 
