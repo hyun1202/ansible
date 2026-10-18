@@ -1,4 +1,8 @@
+# control 이미지에서 설치할 Ansible 확장 모듈입니다. synchronize는 ansible.posix에 들어 있습니다.
 ---
+# Ansible Galaxy에서 설치할 collection 목록입니다.
 collections:
+  # rsync 동기화 모듈을 제공하는 collection 이름입니다.
   - name: ansible.posix
+    # 설치 버전을 고정하여 동일한 collection 버전을 사용합니다.
     version: 2.2.2

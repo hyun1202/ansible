@@ -1,10 +1,18 @@
+# Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다. defaults는 role 기본값이며 vars 파일이나 실행 인자로 덮어쓸 수 있습니다.
 ---
+# 신규 서버에 최종 배치할 nginx 설정 디렉터리입니다.
 nginx_config_dir: /etc/nginx
+# 신규 서버에 최종 배치할 HTML·CSS 등 정적 파일 디렉터리입니다.
 nginx_static_dir: /usr/share/nginx/html
+# 원본 서버에서 수집할 설정 경로입니다. {{ nginx_config_dir }}로 대상 경로 값을 재사용합니다.
 nginx_source_config_dir: '{{ nginx_config_dir }}'
+# 원본 서버에서 수집할 정적 파일 경로입니다. 대상과 다르면 원본 경로를 직접 적습니다.
 nginx_source_static_dir: '{{ nginx_static_dir }}'
+# 신규 서버에서 설정 검사(-t)와 reload(-s reload)에 사용할 실행 파일입니다.
 nginx_binary: /usr/sbin/nginx
+# 반영 후 신규 서버 내부에서 확인할 HTTP 기본 주소입니다.
 nginx_check_base_url: http://127.0.0.1
+# 기본 주소 뒤에 붙여 각각 HTTP 200 응답을 확인할 경로 목록입니다.
 nginx_check_paths:
 - /
 - /static/app.css

@@ -1,62 +1,107 @@
+# 실습 컨테이너 구성: control 1대, 원본 source 1대, 신규 target 2대입니다.
+# Compose 프로젝트 이름이며 컨테이너 이름의 접두사로 사용됩니다.
 name: ansible-study
 
+# Compose 확장 설정입니다. &target-defaults는 두 신규 서버가 공유할 YAML 앵커 이름입니다.
 x-target: &target-defaults
+  # 이미지를 빌드할 디렉터리 또는 상세 빌드 설정입니다.
   build: ./target
+  # 컨테이너가 준비됐는지 주기적으로 확인합니다.
   healthcheck:
+    # SSH 포트 연결을 검사합니다.
     test: [CMD, python3.9, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
+    # 상태 확인을 실행하는 간격입니다.
     interval: 3s
+    # 상태 확인 한 번에 허용하는 최대 시간입니다.
     timeout: 3s
+    # 연속 실패를 허용할 횟수입니다. 한도를 넘으면 unhealthy 상태가 됩니다.
     retries: 10
+  # 같은 lab 네트워크의 컨테이너는 서비스 이름으로 서로 접속합니다.
   networks: [lab]
 
+# 실습에서 실행할 컨테이너 목록입니다.
 services:
+  # Ansible 명령을 실행하고 원본 파일을 보관하는 제어 서버입니다.
   control:
+    # 이미지를 빌드할 디렉터리 또는 상세 빌드 설정입니다.
     build: ./control
+    # 컨테이너 내부에서 사용할 호스트 이름입니다.
     hostname: control
+    # 컨테이너에서 명령을 실행할 기본 디렉터리입니다.
     working_dir: /workspace
+    # 컨테이너에 전달할 환경 변수입니다.
     environment:
+      # Ansible이 읽을 설정 파일의 위치를 지정합니다.
       ANSIBLE_CONFIG: /workspace/ansible.cfg
+    # 호스트경로:컨테이너경로 형식으로 연결합니다. :ro는 컨테이너에서 읽기 전용입니다.
     volumes:
       - ./workspace:/workspace
       - ./.lab/id_ed25519:/run/lab/id_ed25519:ro
       - ./.lab/known_hosts:/run/lab/known_hosts:ro
+    # 아래 서비스의 준비 상태를 확인한 뒤 control을 시작합니다.
     depends_on:
+      # 실습 서버 항목입니다. target/target2는 신규 서버이고 source는 수집 원본입니다.
       target:
+        # healthcheck가 성공하여 healthy 상태가 될 때까지 기다립니다.
         condition: service_healthy
+      # 실습 서버 항목입니다. target/target2는 신규 서버이고 source는 수집 원본입니다.
       target2:
+        # healthcheck가 성공하여 healthy 상태가 될 때까지 기다립니다.
         condition: service_healthy
+    # 같은 lab 네트워크의 컨테이너는 서비스 이름으로 서로 접속합니다.
     networks: [lab]
 
+  # 실습 서버 항목입니다. target/target2는 신규 서버이고 source는 수집 원본입니다.
   target:
+    # *target-defaults 앵커의 공통 설정을 현재 서버 설정에 병합합니다.
     <<: *target-defaults
+    # 컨테이너 내부에서 사용할 호스트 이름입니다.
     hostname: target
+    # 호스트경로:컨테이너경로 형식으로 연결합니다. :ro는 컨테이너에서 읽기 전용입니다.
     volumes:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_ed25519_key:/run/lab/host_key:ro
       - ./.lab/adminuser_password:/run/lab/adminuser_password:ro
 
+  # 실습 서버 항목입니다. target/target2는 신규 서버이고 source는 수집 원본입니다.
   target2:
+    # *target-defaults 앵커의 공통 설정을 현재 서버 설정에 병합합니다.
     <<: *target-defaults
+    # 컨테이너 내부에서 사용할 호스트 이름입니다.
     hostname: target2
+    # 호스트경로:컨테이너경로 형식으로 연결합니다. :ro는 컨테이너에서 읽기 전용입니다.
     volumes:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_target2_ed25519_key:/run/lab/host_key:ro
       - ./.lab/adminuser_password:/run/lab/adminuser_password:ro
 
+  # 실습 서버 항목입니다. target/target2는 신규 서버이고 source는 수집 원본입니다.
   source:
+    # 이미지를 빌드할 디렉터리 또는 상세 빌드 설정입니다.
     build:
+      # Docker 빌드에서 COPY 등에 사용할 기준 디렉터리입니다.
       context: .
+      # 빌드에 사용할 Dockerfile의 경로입니다.
       dockerfile: source/Dockerfile
+    # 컨테이너 내부에서 사용할 호스트 이름입니다.
     hostname: source
+    # 호스트경로:컨테이너경로 형식으로 연결합니다. :ro는 컨테이너에서 읽기 전용입니다.
     volumes:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_source_ed25519_key:/run/lab/host_key:ro
+    # 컨테이너가 준비됐는지 주기적으로 확인합니다.
     healthcheck:
+      # SSH 포트 연결을 검사합니다. source는 HTTP 응답도 함께 확인합니다.
       test: [CMD, python3.9, -c, "import socket, urllib.request; socket.create_connection(('127.0.0.1', 22), 2).close(); urllib.request.urlopen('http://127.0.0.1', timeout=2).read()"]
+      # 상태 확인을 실행하는 간격입니다.
       interval: 3s
+      # 상태 확인 한 번에 허용하는 최대 시간입니다.
       timeout: 5s
+      # 연속 실패를 허용할 횟수입니다. 한도를 넘으면 unhealthy 상태가 됩니다.
       retries: 10
+    # 같은 lab 네트워크의 컨테이너는 서비스 이름으로 서로 접속합니다.
     networks: [lab]
 
+# 같은 lab 네트워크의 컨테이너는 서비스 이름으로 서로 접속합니다.
 networks:
   lab:

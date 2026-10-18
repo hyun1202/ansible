@@ -1,31 +1,60 @@
+# Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다.
 ---
+# 이 항목의 이름입니다.
 - name: 관리자 계정으로 서비스 반영
+  # inventory에서 이 그룹에 속한 서버들을 실행 대상으로 선택합니다.
   hosts: lab
+  # false이면 OS 정보 등을 자동 수집하는 setup 작업을 생략합니다.
   gather_facts: false
+  # 한 서버에서 처리하지 못한 오류가 나면 다른 서버의 후속 작업도 중단합니다.
   any_errors_fatal: true
+  # 신규 서버를 한 대씩 순서대로 반영합니다.
   serial: 1
+  # 실행 시 계정명과 비밀번호를 입력받아 각 name의 변수에 저장합니다.
   vars_prompt:
+  # 이 항목의 이름입니다.
   - name: admin_user
+    # 터미널에 표시할 입력 안내 문구입니다.
     prompt: su로 전환할 계정명
+    # 입력 없이 Enter를 누르면 사용하는 기본값입니다.
     default: adminuser
+    # true는 입력값을 화면에 숨기고, false는 입력한 글자를 보여줍니다.
     private: false
+  # 이 항목의 이름입니다.
   - name: admin_su_password
+    # 터미널에 표시할 입력 안내 문구입니다.
     prompt: 전환할 계정의 su 비밀번호
+    # true는 입력값을 화면에 숨기고, false는 입력한 글자를 보여줍니다.
     private: true
+  # 이 항목의 이름입니다.
   - name: admin_sudo_password
+    # 터미널에 표시할 입력 안내 문구입니다.
     prompt: 전환한 계정의 sudo 비밀번호 (실습에서는 su와 동일)
+    # true는 입력값을 화면에 숨기고, false는 입력한 글자를 보여줍니다.
     private: true
+  # 이 범위에서 사용할 변수 값을 지정합니다.
   vars:
+    # 입력받은 su 비밀번호를 Ansible 계정 전환에 사용합니다.
     ansible_become_password: '{{ admin_su_password }}'
+  # 아래 YAML 파일에서 경로와 서비스 목록 변수를 읽습니다.
   vars_files:
   - vars/environment.yml
   - vars/services.yml
+  # 이 목록의 작업을 위에서 아래 순서로 실행합니다.
   tasks:
+  # 이 항목의 이름입니다.
   - name: 선택한 role의 단계 실행
+    # 지정한 role의 tasks/main.yml부터 실행합니다.
     ansible.builtin.include_role:
+      # 반복 중인 role 이름(nginx 또는 common_services)을 사용합니다.
       name: '{{ service_role }}'
+    # 목록 항목마다 이 작업을 반복합니다. enabled_roles는 role 목록, common_services는 서비스 목록입니다. 기본 현재 항목은 item입니다.
     loop: '{{ enabled_roles }}'
+    # 반복 변수의 이름과 화면에 표시할 이름을 설정합니다.
     loop_control:
+      # 기본 반복 변수 item 대신 이 이름으로 현재 항목을 참조합니다.
       loop_var: service_role
+    # 이 범위에서 사용할 변수 값을 지정합니다.
     vars:
+      # role의 main.yml이 이 값에 해당하는 fetch/upload/apply.yml을 선택합니다.
       deployment_phase: apply

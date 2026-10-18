@@ -1,27 +1,54 @@
+# Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다.
 ---
+# 실행 로그에 표시할 작업 이름입니다.
 - name: 서비스 수집 완료 확인
+  # 경로의 존재 여부 등 정보를 조회합니다. 파일 내용은 변경하지 않습니다.
   ansible.builtin.stat:
+    # 작업이 조회하거나 만들 경로입니다. {{ }} 안의 변수는 실제 경로로 치환됩니다.
     path: '{{ collection_root }}/common_services/{{ service.name }}/.complete'
+  # 이 작업만 대상 서버 대신 control(localhost)에서 실행합니다.
   delegate_to: localhost
+  # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
   register: service_collected
+# 실행 로그에 표시할 작업 이름입니다.
 - name: 미수집 서비스 업로드 차단
+  # 조건이 참인지 검사하며 거짓이면 해당 작업을 실패시킵니다.
   ansible.builtin.assert:
+    # 아래 조건이 모두 참이어야 통과합니다.
     that:
+    # register로 저장한 stat 결과에서 exists가 true인지 확인합니다. 완료 표시가 있어야 업로드합니다.
     - service_collected.stat.exists
+    # assert 조건이 거짓일 때 표시할 안내 문구입니다.
     fail_msg: 먼저 fetch.yml을 실행하세요.
+# 실행 로그에 표시할 작업 이름입니다.
 - name: 서비스 업로드 폴더 준비
+  # 파일 또는 디렉터리의 존재 여부와 권한을 관리합니다.
   ansible.builtin.file:
+    # 작업이 조회하거나 만들 경로입니다. {{ }} 안의 변수는 실제 경로로 치환됩니다.
     path: '{{ staging_root }}/common_services/{{ service.name }}'
+    # directory는 디렉터리 생성·유지, absent는 해당 경로 삭제를 뜻합니다.
     state: directory
+    # 소유자만 읽기·쓰기·진입 가능한 디렉터리 권한입니다.
     mode: '0700'
+# 실행 로그에 표시할 작업 이름입니다.
 - name: 서비스 디렉터리 업로드
+  # rsync로 디렉터리를 동기화합니다. pull은 수집, push는 업로드입니다.
   ansible.posix.synchronize:
+    # control에서 신규 서버로 보냅니다.
     mode: push
+    # 전송할 원본 경로입니다. 끝의 /는 폴더 자체가 아닌 내부 내용을 전송한다는 뜻입니다.
     src: '{{ collection_root }}/common_services/{{ service.name }}/files/'
+    # 전송 결과 또는 생성 파일을 저장할 목적지 경로입니다.
     dest: '{{ staging_root }}/common_services/{{ service.name }}/files/'
+    # rsync archive 모드로 재귀 복사하며 권한·시간·심볼릭 링크 등을 보존합니다.
     archive: true
+    # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
     owner: false
+    # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
     group: false
+    # 전송 원본에 없는 항목을 전송 목적지에서 삭제합니다. 수집본 또는 staging 범위에 적용됩니다.
     delete: true
+    # Ansible에 설정된 SSH 연결 옵션을 rsync에도 전달합니다.
     use_ssh_args: true
+    # SSH known_hosts를 이용해 접속 서버의 호스트 키를 확인합니다.
     verify_host: true

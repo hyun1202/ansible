@@ -1,25 +1,48 @@
+# Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다.
 ---
+# 실행 로그에 표시할 작업 이름입니다.
 - name: 원본 파일 수집
+  # inventory에서 이 그룹에 속한 서버들을 실행 대상으로 선택합니다.
   hosts: config_sources
+  # false이면 OS 정보 등을 자동 수집하는 setup 작업을 생략합니다.
   gather_facts: false
+  # 한 서버에서 처리하지 못한 오류가 나면 다른 서버의 후속 작업도 중단합니다.
   any_errors_fatal: true
+  # true이면 아래 작업을 다른 계정으로 전환하여 실행하고, false이면 SSH 접속 계정을 사용합니다.
   become: false
+  # 아래 YAML 파일에서 경로와 서비스 목록 변수를 읽습니다.
   vars_files:
   - vars/environment.yml
   - vars/services.yml
+  # role을 실행하기 전에 먼저 확인할 작업입니다.
   pre_tasks:
+  # 실행 로그에 표시할 작업 이름입니다.
   - name: 공통 수집본의 원본 서버가 한 대인지 확인
+    # 조건이 참인지 검사하며 거짓이면 해당 작업을 실패시킵니다.
     ansible.builtin.assert:
+      # 아래 조건이 모두 참이어야 통과합니다.
       that:
+      # groups는 inventory 그룹 정보입니다. 공통 수집본이 덮어써지지 않도록 원본은 한 대만 허용합니다.
       - groups.config_sources | length == 1
+      # assert 조건이 거짓일 때 표시할 안내 문구입니다.
       fail_msg: config_sources에는 기준 서버 한 대를 지정하세요.
+    # 현재 실행 배치에서 한 번만 수행하는 공통 확인 작업입니다.
     run_once: true
+  # 이 목록의 작업을 위에서 아래 순서로 실행합니다.
   tasks:
+  # 실행 로그에 표시할 작업 이름입니다.
   - name: 선택한 role의 단계 실행
+    # 지정한 role의 tasks/main.yml부터 실행합니다.
     ansible.builtin.include_role:
+      # 반복 중인 role 이름(nginx 또는 common_services)을 사용합니다.
       name: '{{ service_role }}'
+    # 목록 항목마다 이 작업을 반복합니다. enabled_roles는 role 목록, common_services는 서비스 목록입니다. 기본 현재 항목은 item입니다.
     loop: '{{ enabled_roles }}'
+    # 반복 변수의 이름과 화면에 표시할 이름을 설정합니다.
     loop_control:
+      # 기본 반복 변수 item 대신 이 이름으로 현재 항목을 참조합니다.
       loop_var: service_role
+    # 이 범위에서 사용할 변수 값을 지정합니다.
     vars:
+      # role의 main.yml이 이 값에 해당하는 fetch/upload/apply.yml을 선택합니다.
       deployment_phase: fetch
