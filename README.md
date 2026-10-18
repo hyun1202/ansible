@@ -3,7 +3,7 @@
 이 프로젝트는 Ubuntu 24.04 컨테이너 네 개(제어 노드 1대, 신규 대상 노드 2대, 운영 서버 역할 1대)로 구성됩니다.
 
 - `control`: Ansible Core 2.19.14를 실행하는 제어 노드
-- `target`: SSH와 Python이 준비된 대상 노드. 접속 계정은 `ansible`입니다.
+- `target`: SSH와 Python이 준비된 대상 노드. 접속 계정은 sudo 권한이 없는 `deploy`입니다.
 - `target2`: 두 번째 대상 노드. `target`과 같은 구성이고, 서버 호스트 키는 별도로 사용합니다.
 - `source`: nginx가 실행 중인 운영 서버 역할의 실습 컨테이너. rsync로 설정을 읽어 오는 용도이며, 배포용 inventory에는 포함하지 않습니다.
 
@@ -62,14 +62,14 @@ Mac의 `workspace/` 폴더가 control의 `/workspace`에 연결됩니다. 플레
 - `workspace/ansible.cfg`: 접속과 실행 기본 설정
 - `.lab/`: 이 실습만을 위한 SSH 키와 대상 서버의 공개키. Git에 넣거나 공유하지 않습니다.
 
-SSH 대상 서버의 공개키를 미리 등록해서 호스트 키 검증을 유지합니다. 실습 대상의 `ansible` 계정은 컨테이너 안에서 비밀번호 없이 sudo를 사용할 수 있습니다.
+SSH 대상 서버의 공개키를 미리 등록해서 호스트 키 검증을 유지합니다. 신규 타겟에는 `deploy`만 SSH 접속할 수 있습니다. `adminuser`는 `su` 전환용 계정이며 비밀번호를 입력해야 sudo를 사용할 수 있습니다. source의 수집 계정은 기존 `ansible`입니다.
 
 ## 컨테이너 쉘
 
 ```sh
 docker-compose exec control bash
-docker-compose exec --user ansible target bash
-docker-compose exec --user ansible target2 bash
+docker-compose exec --user deploy target bash
+docker-compose exec --user deploy target2 bash
 ```
 
 ## 중지와 재시작
@@ -86,3 +86,74 @@ docker-compose start
 파일·권한·계정·패키지·설정 템플릿·nginx 설정 검사 등을 실습합니다. 일반 컨테이너이므로 systemd, OS 재부팅, 부팅 시 서비스 자동 시작의 최종 검증은 실제 신규 Linux 서버에서 진행합니다. Apple Silicon에서는 ARM64로 실행되므로 이후 바이너리 설치 시 아키텍처를 확인합니다.
 
 수집 플레이북은 실행할 때마다 새 수집본을 만드므로 매번 `changed`가 발생합니다. 이후 신규 서버 구성 플레이북에서는 같은 수집본을 반복 적용해 멱등성을 확인합니다.
+
+## 직접 실습: 수집 → 업로드 → 계정 전환 → 복사 → 검사 → reload
+
+타겟 두 대에는 nginx가 미리 설치·실행되어 있습니다. 초기 HTTP 응답은 `new target: before deployment`입니다. 이번 실습에서는 전체 nginx 디렉터리를 수집한 다음 예제 사이트 설정 `sites-available/legacy-app.conf` 한 파일을 적용합니다. nginx.conf 전체 교체 실습은 아닙니다.
+
+### 1. 실습용 관리자 비밀번호 확인 (Mac)
+
+```sh
+cd /Users/hyun/Study/ansible
+cat .lab/adminuser_password
+```
+
+이 파일은 실습 환경 전용이며 Git에 포함되지 않습니다. 두 타겟의 `adminuser`가 같은 실습 비밀번호를 사용합니다. 컨테이너 시작 시 이 파일의 값으로 설정되므로 컨테이너 안에서 바꾼 비밀번호는 재시작 시 초기화됩니다. 실제 운영 비밀번호를 이 파일에 넣지 마세요.
+
+### 2. source의 최신 설정 수집 (Mac)
+
+```sh
+/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory-source.ini fetch-nginx.yml
+```
+
+출력된 `/workspace/snapshots/nginx-.../nginx/` 경로에서 마지막 `nginx/`를 제외한 수집본 경로를 다음 단계에 입력합니다.
+
+### 3. 타겟 두 대의 deploy 폴더에 업로드 (Mac)
+
+```sh
+/opt/homebrew/bin/docker-compose exec control ansible-playbook upload-nginx.yml
+```
+
+수집본 경로를 입력하면 두 서버의 `/home/deploy/staging/legacy-app.conf`에 업로드합니다. sudo는 사용하지 않고, 실행 중인 nginx 설정도 아직 바뀌지 않습니다.
+
+### 4. target에 SSH 접속하고 계정 전환 (Mac에서 시작)
+
+```sh
+/opt/homebrew/bin/docker-compose exec control ssh deploy@target
+```
+
+이후 명령은 target 안에서 실행합니다.
+
+```sh
+whoami
+cat /home/deploy/staging/legacy-app.conf
+su - adminuser
+whoami
+```
+
+`su` 비밀번호에는 앞서 확인한 실습용 관리자 비밀번호를 입력합니다. 입력 중 문자가 표시되지 않는 것이 정상입니다.
+
+### 5. 기존 파일 백업 후 sudo로 복사 (target의 adminuser)
+
+```sh
+sudo cp -a /etc/nginx/sites-available/legacy-app.conf /etc/nginx/sites-available/legacy-app.conf.bak
+sudo cp /home/deploy/staging/legacy-app.conf /etc/nginx/sites-available/legacy-app.conf
+```
+
+sudo가 비밀번호를 물으면 같은 adminuser 비밀번호를 입력합니다. `/etc/nginx/sites-enabled/legacy-app.conf`는 이 파일을 가리키는 링크로 미리 준비되어 있습니다. 백업은 이번 적용 전 한 번 만들고, 실패한 설정으로 덮어쓰지 않습니다.
+
+### 6. 설정 검사에 성공한 경우에만 reload (target의 adminuser)
+
+```sh
+sudo nginx -t && sudo nginx -s reload
+python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1').read().decode())"
+```
+
+응답이 `legacy nginx configuration v1`이면 원본 서버에서 수집한 설정이 반영된 것입니다. 검사에 실패하면 reload하지 말고 오류를 수정하거나 아래처럼 복원합니다.
+
+```sh
+sudo cp -a /etc/nginx/sites-available/legacy-app.conf.bak /etc/nginx/sites-available/legacy-app.conf
+sudo nginx -t
+```
+
+`exit` 두 번으로 adminuser와 SSH 세션에서 나온 뒤, `ssh deploy@target2`로 두 번째 타겟에 같은 과정을 연습할 수 있습니다. 일반 Docker 컨테이너이므로 이번에는 systemctl 대신 nginx 명령을 사용합니다.

@@ -24,6 +24,7 @@ services:
     volumes:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_ed25519_key:/run/lab/host_key:ro
+      - ./.lab/adminuser_password:/run/lab/adminuser_password:ro
     healthcheck:
       test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
       interval: 3s
@@ -37,6 +38,7 @@ services:
     volumes:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_target2_ed25519_key:/run/lab/host_key:ro
+      - ./.lab/adminuser_password:/run/lab/adminuser_password:ro
     healthcheck:
       test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
       interval: 3s

@@ -6,7 +6,7 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no
 UsePAM yes
-AllowUsers ansible
+AllowUsers deploy
 AuthorizedKeysFile .ssh/authorized_keys
 Subsystem sftp internal-sftp
 PrintMotd no

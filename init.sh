@@ -3,6 +3,10 @@ set -eu
 cd "$(dirname "$0")"
 umask 077
 mkdir -p .lab
+if [ ! -s .lab/adminuser_password ]; then
+  openssl rand -hex 12 > .lab/adminuser_password
+fi
+chmod 600 .lab/adminuser_password
 if [ ! -f .lab/id_ed25519 ]; then
   ssh-keygen -q -t ed25519 -N '' -C ansible-study-client -f .lab/id_ed25519
 fi

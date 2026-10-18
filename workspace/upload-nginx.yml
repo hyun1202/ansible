@@ -1,0 +1,37 @@
+---
+- name: 일반 계정으로 신규 서버에 nginx 설정 업로드
+  hosts: lab
+  gather_facts: false
+  become: false
+
+  vars_prompt:
+    - name: snapshot_dir
+      prompt: "수집본 경로를 입력하세요 (/workspace/snapshots/nginx-... 형식)"
+      private: false
+
+  pre_tasks:
+    - name: 성공한 수집본인지 확인
+      ansible.builtin.stat:
+        path: "{{ snapshot_dir }}/.complete"
+      delegate_to: localhost
+      run_once: true
+      register: snapshot_complete
+
+    - name: 수집 완료 표시가 없으면 중단
+      ansible.builtin.assert:
+        that: snapshot_complete.stat.exists
+        fail_msg: "수집이 완료된 폴더의 경로를 지정하세요."
+      run_once: true
+
+  tasks:
+    - name: deploy 전용 업로드 폴더 준비
+      ansible.builtin.file:
+        path: /home/deploy/staging
+        state: directory
+        mode: '0700'
+
+    - name: 예제 사이트 설정을 임시 폴더에 업로드
+      ansible.builtin.copy:
+        src: "{{ snapshot_dir }}/nginx/sites-available/legacy-app.conf"
+        dest: /home/deploy/staging/legacy-app.conf
+        mode: '0600'
