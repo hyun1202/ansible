@@ -1,0 +1,33 @@
+name: ansible-study
+
+services:
+  control:
+    build: ./control
+    hostname: control
+    working_dir: /workspace
+    environment:
+      ANSIBLE_CONFIG: /workspace/ansible.cfg
+    volumes:
+      - ./workspace:/workspace
+      - ./.lab/id_ed25519:/run/lab/id_ed25519:ro
+      - ./.lab/known_hosts:/run/lab/known_hosts:ro
+    depends_on:
+      target:
+        condition: service_healthy
+    networks: [lab]
+
+  target:
+    build: ./target
+    hostname: target
+    volumes:
+      - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
+      - ./.lab/ssh_host_ed25519_key:/run/lab/host_key:ro
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks: [lab]
+
+networks:
+  lab:
