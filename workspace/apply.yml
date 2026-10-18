@@ -1,7 +1,7 @@
 # Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다.
 ---
 # 이 항목의 이름입니다.
-- name: 관리자 계정으로 서비스 반영
+- name: nginx와 공통 서비스 반영
   # inventory에서 이 그룹에 속한 서버들을 실행 대상으로 선택합니다.
   hosts: lab
   # false이면 OS 정보 등을 자동 수집하는 setup 작업을 생략합니다.
@@ -10,20 +10,15 @@
   any_errors_fatal: true
   # 신규 서버를 한 대씩 순서대로 반영합니다.
   serial: 1
-  # 이 범위에서 사용할 변수 값을 지정합니다.
-  vars:
-    # 입력받은 su 비밀번호를 Ansible 계정 전환에 사용합니다.
-    ansible_become_password: '{{ admin_su_password }}'
   # 아래 YAML 파일에서 경로와 서비스 목록 변수를 읽습니다.
   vars_files:
   - vars/environment.yml
   - vars/services.yml
-  # sudo 실행 옵션을 공통 변수에서 읽습니다.
-  - vars/execution.yml
   # 이 목록의 작업을 위에서 아래 순서로 실행합니다.
   pre_tasks:
-    - name: 대상 인증 정보 준비
+    - name: nginx 개발자 접속 준비
       ansible.builtin.import_tasks: tasks/target-credentials.yml
+      when: '"nginx" in enabled_roles'
   tasks:
   # 이 항목의 이름입니다.
   - name: 선택한 role의 단계 실행

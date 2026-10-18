@@ -38,7 +38,7 @@
         # 원본 서버에서 control로 가져옵니다.
         mode: pull
         # 전송할 원본 경로입니다. 끝의 /는 폴더 자체가 아닌 내부 내용을 전송한다는 뜻입니다.
-        src: '{{ source_export.stdout + "/nginx/" if nginx_source_use_sudo | bool else nginx_source_config_dir + "/" }}'
+        src: '{{ source_export.path + "/nginx/" if nginx_source_use_sudo | bool else nginx_source_config_dir + "/" }}'
         # 전송 결과 또는 생성 파일을 저장할 목적지 경로입니다.
         dest: '{{ collection_root }}/nginx/'
         # 전송 원본에 없는 항목을 전송 목적지에서 삭제합니다. 수집본 또는 staging 범위에 적용됩니다.
@@ -60,7 +60,7 @@
         # 원본 서버에서 control로 가져옵니다.
         mode: pull
         # 전송할 원본 경로입니다. 끝의 /는 폴더 자체가 아닌 내부 내용을 전송한다는 뜻입니다.
-        src: '{{ source_export.stdout + "/static/" if nginx_source_use_sudo | bool else nginx_source_static_dir + "/" }}'
+        src: '{{ source_export.path + "/static/" if nginx_source_use_sudo | bool else nginx_source_static_dir + "/" }}'
         # 전송 결과 또는 생성 파일을 저장할 목적지 경로입니다.
         dest: '{{ collection_root }}/static/'
         # 전송 원본에 없는 항목을 전송 목적지에서 삭제합니다. 수집본 또는 staging 범위에 적용됩니다.
@@ -81,7 +81,7 @@
       ansible.builtin.include_tasks: cleanup-source.yml
       when:
         - nginx_source_use_sudo | bool
-        - source_export.stdout is defined
+        - source_export.path is defined
         - source_export is succeeded
 # 실행 로그에 표시할 작업 이름입니다.
 - name: 수집 성공 표시

@@ -2,8 +2,8 @@
 ---
 - name: nginx 설정 검사
   ansible.builtin.command:
-    argv: '{{ sudo_root_argv + [nginx_binary, "-t"] }}'
+    argv: '{{ [nginx_binary, "-t"] }}'
   changed_when: false
 - name: 검사에 성공한 설정 reload
   ansible.builtin.command:
-    argv: '{{ sudo_root_argv + [nginx_binary, "-s", "reload"] }}'
+    argv: '{{ [nginx_binary, "-s", "reload"] }}'

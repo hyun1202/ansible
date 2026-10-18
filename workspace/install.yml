@@ -1,83 +1,93 @@
-# Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다.
+# 개발자 계정으로 직접 SSH 접속한 뒤 sudo로 설치와 초기 폴더 준비를 수행합니다.
 ---
-# 이 항목의 이름입니다.
-- name: Rocky 8 필수 패키지와 Java 11 준비
-  # inventory에서 이 그룹에 속한 서버들을 실행 대상으로 선택합니다.
+- name: Rocky 8 패키지와 서비스 폴더 준비
   hosts: lab
-  # false이면 OS 정보 등을 자동 수집하는 setup 작업을 생략합니다.
   gather_facts: false
-  # 한 서버에서 처리하지 못한 오류가 나면 다른 서버의 후속 작업도 중단합니다.
-  any_errors_fatal: true
-  # 신규 서버를 한 대씩 순서대로 반영합니다.
   serial: 1
-  # 이 범위에서 사용할 변수 값을 지정합니다.
-  vars:
-    # 입력받은 su 비밀번호를 Ansible 계정 전환에 사용합니다.
-    ansible_become_password: '{{ admin_su_password }}'
-  # 아래 YAML 파일에서 경로와 서비스 목록 변수를 읽습니다.
-  vars_files:
-  - vars/environment.yml
-  - vars/services.yml
-  # sudo 실행 옵션을 공통 변수에서 읽습니다.
-  - vars/execution.yml
-  # install.yml 단독 실행 때도 OS와 계정·공간을 확인합니다.
+  any_errors_fatal: true
+  vars_files: [vars/environment.yml, vars/services.yml]
   pre_tasks:
-    - name: 대상 인증 정보 준비
+    - name: 대상 개발자 접속 준비
       ansible.builtin.import_tasks: tasks/target-credentials.yml
     - name: 대상 사전 검사
       ansible.builtin.import_tasks: tasks/preflight-target.yml
   tasks:
-    - name: 설치할 패키지 목록 결정
-      ansible.builtin.set_fact:
-        required_packages: '{{ bootstrap_packages + (["nginx"] if "nginx" in enabled_roles else []) }}'
-    - name: 현재 설치된 패키지 조회
+    - name: 키 계정 이름 확인
       ansible.builtin.command:
-        argv: [rpm, -q, '{{ item }}']
-      loop: '{{ required_packages }}'
-      register: package_queries
-      # rpm -q의 1은 미설치입니다. 다른 오류만 실패 처리합니다.
-      failed_when: package_queries.rc not in [0, 1]
+        argv: [id, -un]
+      register: target_reader
       changed_when: false
-    - name: 미설치 패키지만 선택
-      ansible.builtin.set_fact:
-        missing_packages: '{{ package_queries.results | selectattr("rc", "equalto", 1) | map(attribute="item") | list }}'
-    - name: 설치 예정 안내
-      ansible.builtin.debug:
-        msg: '누락된 패키지: {{ missing_packages }}'
-    - name: su 전환 후 sudo로 설치
-      # SSH 계정 → su 관리자 일반 계정 → sudo root 순서를 유지합니다.
+    - name: 키 계정 그룹 확인
+      ansible.builtin.command:
+        argv: [id, -gn]
+      register: target_reader_group
+      changed_when: false
+    - name: 개발자 SSH와 sudo로 초기 준비
+      delegate_to: '{{ inventory_hostname }}__developer'
       become: true
-      become_method: su
-      become_user: '{{ admin_user }}'
-      no_log: true
+      become_method: sudo
+      become_user: root
       block:
-        - name: 누락된 패키지 설치
+        - name: 설치할 패키지 목록 결정
+          ansible.builtin.set_fact:
+            required_packages: '{{ bootstrap_packages + (["nginx"] if "nginx" in enabled_roles else []) }}'
+        - name: 현재 패키지 조회
           ansible.builtin.command:
-            # 비밀번호는 명령 인자가 아닌 표준 입력으로 전달합니다.
-            argv: '{{ sudo_root_argv + ["dnf", "install", "-y"] + missing_packages }}'
-            stdin: '{{ admin_sudo_password }}'
+            argv: [rpm, -q, '{{ item }}']
+          loop: '{{ required_packages }}'
+          register: package_queries
+          changed_when: false
+          failed_when: package_queries.rc not in [0, 1]
+        - name: 누락된 패키지 선택
+          ansible.builtin.set_fact:
+            missing_packages: '{{ package_queries.results | selectattr("rc", "equalto", 1) | map(attribute="item") | list }}'
+        # Rocky 8의 libdnf는 기본 Python 3.6용이므로 Ansible용 Python 3.9에서는 CLI를 사용합니다.
+        # sudo 명령 문자열은 필요 없으며 become이 모듈 실행 권한을 처리합니다.
+        - name: 누락된 패키지만 설치
+          ansible.builtin.command:
+            argv: '{{ ["dnf", "install", "-y"] + missing_packages }}'
           when: missing_packages | length > 0
-        - name: 실제 서버의 nginx 자동 시작 준비
-          ansible.builtin.command:
-            argv: >-
-              {{ sudo_root_argv + ["systemctl", "enable", "--now", "nginx"] }}
-            stdin: '{{ admin_sudo_password }}'
-          # 컨테이너에서는 entrypoint가 nginx를 실행하므로 systemctl을 쓰지 않습니다.
+        - name: 전송용 staging 상위 폴더 준비
+          ansible.builtin.file:
+            path: '{{ staging_root | dirname }}'
+            state: directory
+            owner: '{{ target_reader.stdout }}'
+            group: '{{ target_reader_group.stdout }}'
+            mode: '0700'
+        - name: 업로드 폴더 준비
+          ansible.builtin.file:
+            path: '{{ staging_root }}'
+            state: directory
+            owner: '{{ target_reader.stdout }}'
+            group: '{{ target_reader_group.stdout }}'
+            mode: '0700'
+        - name: 기존 서비스 폴더 확인
+          ansible.builtin.stat:
+            path: '{{ item.path }}'
+          loop: '{{ common_services if "common_services" in enabled_roles else [] }}'
+          register: service_directories
+        - name: 새 서비스 폴더만 키 계정 소유로 준비
+          ansible.builtin.file:
+            path: '{{ item.item.path }}'
+            state: directory
+            owner: '{{ item.item.owner }}'
+            group: '{{ item.item.group }}'
+            mode: '0750'
+          loop: '{{ service_directories.results }}'
+          when: not item.stat.exists
+          loop_control:
+            label: '{{ item.item.path }}'
+        - name: systemd 서버의 nginx 시작 준비
+          ansible.builtin.systemd_service:
+            name: nginx
+            enabled: true
+            state: started
           when:
             - '"nginx" in enabled_roles'
             - ansible_facts.service_mgr == 'systemd'
-      rescue:
-        - name: 패키지 준비 실패 안내
-          ansible.builtin.fail:
-            msg: 패키지 준비 실패. su·sudo 권한, DNF 저장소 연결 및 서버의 dnf 로그를 확인하세요.
-          no_log: false
-    - name: Java 11 실행 확인
+    - name: Java 11 확인
       ansible.builtin.command:
         argv: ['{{ java_home }}/bin/java', -version]
       register: java_version
       changed_when: false
-      # 다른 Java가 설치되어 있어도 지정한 Java 11 경로의 실행 결과를 검사합니다.
       failed_when: java_version.rc != 0 or 'version "11.' not in java_version.stderr
-    - name: Java 경로 안내
-      ansible.builtin.debug:
-        msg: '서비스 JAVA_HOME={{ java_home }} (시스템 기본 Java는 변경하지 않음)'

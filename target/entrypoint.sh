@@ -3,7 +3,7 @@ set -eu
 # systemd가 없는 컨테이너에서 부팅 중 로그인 차단 표시를 해제합니다.
 rm -f /run/nologin
 install -d -m 755 /run/sshd
-install -d -m 700 -o deploy -g deploy /home/deploy/.ssh /home/deploy/staging
+install -d -m 700 -o deploy -g deploy /home/deploy/.ssh /srv/ansible-staging /srv/ansible-staging/upload
 install -m 600 -o deploy -g deploy /run/lab/authorized_keys /home/deploy/.ssh/authorized_keys
 printf 'adminuser:%s\n' "$(cat /run/lab/adminuser_password)" | chpasswd
 install -m 600 /run/lab/host_key /etc/ssh/ssh_host_ed25519_key

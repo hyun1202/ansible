@@ -8,7 +8,9 @@ enabled_roles: [nginx, common_services]
 # control의 수집본 경로입니다. playbook_dir는 실행 플레이북이 있는 디렉터리입니다.
 collection_root: "{{ playbook_dir }}/collected"
 # 신규 서버에서 SSH 일반 계정이 먼저 파일을 업로드할 임시 경로입니다.
-staging_root: /home/deploy/staging
+staging_root: /srv/ansible-staging/upload
+# 원본에 잠깐 만드는 인증서 포함 수집 사본의 상위 폴더입니다.
+source_staging_root: /srv/ansible-staging
 
 # nginx 원본·대상 경로 (같으면 source 변수는 아래 값을 그대로 참조)
 # 신규 서버에 최종 배치할 nginx 설정 디렉터리입니다.
@@ -33,6 +35,6 @@ bootstrap_packages: [rsync, curl, acl, java-11-openjdk-headless]
 # Java 11을 명시적으로 사용할 경로입니다. 시스템의 기본 Java 선택은 변경하지 않습니다.
 java_home: /usr/lib/jvm/jre-11-openjdk
 
-# true이면 원본에서 su → sudo로 nginx 설정·static 사본을 만든 뒤 일반 계정으로 수집합니다.
+# true이면 원본에 개발자 계정으로 SSH 접속하고 sudo로 nginx 설정·static 사본을 만든 뒤 일반 계정으로 수집합니다.
 # 원본 SSH 계정이 모든 파일을 읽을 수 있으면 false로 직접 수집할 수 있습니다.
 nginx_source_use_sudo: true

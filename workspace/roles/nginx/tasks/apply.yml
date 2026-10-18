@@ -1,98 +1,88 @@
 # Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다.
-# sudo 옵션: -S는 stdin에서 비밀번호 읽기, -k는 인증 캐시 무시, -p 뒤 빈 문자열은 프롬프트 숨김, --는 옵션 끝입니다.
-# argv의 각 항목은 명령 또는 인자 하나입니다. cp -a는 재귀·속성 보존, --no-preserve=ownership은 원본 소유권 보존 생략입니다.
+# 파일 복사는 copy 모듈, 디렉터리 이동과 nginx 검사는 command 모듈을 사용합니다.
 ---
 # 실행 로그에 표시할 작업 이름입니다.
-- name: su 전환 후 sudo로 복사 및 반영
-  # true이면 아래 작업을 다른 계정으로 전환하여 실행하고, false이면 SSH 접속 계정을 사용합니다.
+- name: 개발자 SSH와 sudo로 nginx 반영
+  delegate_to: '{{ inventory_hostname }}__developer'
   become: true
-  # SSH 접속 후 su를 사용해 관리자 일반 계정으로 전환합니다.
-  become_method: su
-  # su로 전환할 계정입니다. root 작업은 이후 명령 안의 sudo가 수행합니다.
-  become_user: '{{ admin_user }}'
-  # true이면 입력값과 결과를 로그에서 숨깁니다. false인 안내 작업은 메시지를 보여줍니다.
+  become_method: sudo
+  become_user: root
   no_log: true
-  # 이 블록 안에서 사용하는 모듈에 공통 기본 인자를 지정합니다.
-  module_defaults:
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # sudo -S가 읽도록 입력받은 sudo 비밀번호를 표준 입력으로 전달합니다.
-      stdin: '{{ admin_sudo_password }}'
-  # 공통 계정 전환과 옵션을 적용할 작업 묶음입니다.
   block:
   # 실행 로그에 표시할 작업 이름입니다.
   - name: 업로드된 nginx.conf 확인
     # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
+      # 명령과 인자를 목록으로 전달합니다. tempfile 결과의 path는 이번 실행의 작업 폴더 경로입니다.
       argv: >-
-        {{ sudo_root_argv + ["test", "-f", staging_root ~ "/nginx/nginx.conf"] }}
+        {{ ["test", "-f", staging_root ~ "/nginx/nginx.conf"] }}
     # false이면 조회·검사 작업을 변경 발생으로 집계하지 않습니다.
     changed_when: false
   # 실행 로그에 표시할 작업 이름입니다.
   - name: root 소유의 작업 디렉터리 생성
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["mktemp", "-d", (nginx_config_dir | dirname) ~ "/nginx-stage.XXXXXX"] }}
-    # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
+    ansible.builtin.tempfile:
+      state: directory
+      path: '{{ nginx_config_dir | dirname }}'
+      prefix: nginx-stage.
     register: nginx_stage
-  # 실행 로그에 표시할 작업 이름입니다.
   - name: nginx 전체 디렉터리를 root 소유로 복사
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["cp", "-a", "--no-preserve=ownership", staging_root ~ "/nginx", nginx_stage.stdout ~ "/"] }}
-  # 실행 로그에 표시할 작업 이름입니다.
+    ansible.builtin.copy:
+      src: '{{ staging_root }}/nginx/'
+      dest: '{{ nginx_stage.path }}/nginx/'
+      remote_src: true
+      mode: preserve
+      owner: root
+      group: root
+      local_follow: false
+      follow: false
   - name: 정적 파일을 위한 root 소유 작업 디렉터리 생성
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["mktemp", "-d", (nginx_static_dir | dirname) ~ "/static-stage.XXXXXX"] }}
-    # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
+    ansible.builtin.tempfile:
+      state: directory
+      path: '{{ nginx_static_dir | dirname }}'
+      prefix: static-stage.
     register: static_stage
-  # 실행 로그에 표시할 작업 이름입니다.
   - name: 정적 파일 전체를 root 소유로 복사
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["cp", "-a", "--no-preserve=ownership", staging_root ~ "/static", static_stage.stdout ~ "/html"] }}
-  # 실행 로그에 표시할 작업 이름입니다.
+    ansible.builtin.copy:
+      src: '{{ staging_root }}/static/'
+      dest: '{{ static_stage.path }}/html/'
+      remote_src: true
+      mode: preserve
+      owner: root
+      group: root
+      local_follow: false
+      follow: false
+  # 디렉터리 이동은 대응하는 기본 모듈이 없어 mv를 사용합니다. 권한은 become이 처리합니다.
   - name: 기존 정적 파일 디렉터리 백업
     # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
+      # 명령과 인자를 목록으로 전달합니다. tempfile 결과의 path는 이번 실행의 작업 폴더 경로입니다.
       argv: >-
-        {{ sudo_root_argv + ["mv", nginx_static_dir, static_stage.stdout ~ ".backup"] }}
+        {{ ["mv", nginx_static_dir, static_stage.path ~ ".backup"] }}
     # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
     register: static_backup_move
   # 실행 로그에 표시할 작업 이름입니다.
   - name: 복사한 정적 파일을 서비스 경로에 배치
     # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
+      # 명령과 인자를 목록으로 전달합니다. tempfile 결과의 path는 이번 실행의 작업 폴더 경로입니다.
       argv: >-
-        {{ sudo_root_argv + ["mv", static_stage.stdout ~ "/html", nginx_static_dir] }}
+        {{ ["mv", static_stage.path ~ "/html", nginx_static_dir] }}
   # 실행 로그에 표시할 작업 이름입니다.
   - name: 기존 nginx 설정 디렉터리 백업
     # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
+      # 명령과 인자를 목록으로 전달합니다. tempfile 결과의 path는 이번 실행의 작업 폴더 경로입니다.
       argv: >-
-        {{ sudo_root_argv + ["mv", nginx_config_dir, nginx_stage.stdout ~ ".backup"] }}
+        {{ ["mv", nginx_config_dir, nginx_stage.path ~ ".backup"] }}
     # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
     register: nginx_backup_move
   # 실행 로그에 표시할 작업 이름입니다.
   - name: 복사한 설정을 {{ nginx_config_dir }}에 배치
     # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
     ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
+      # 명령과 인자를 목록으로 전달합니다. tempfile 결과의 path는 이번 실행의 작업 폴더 경로입니다.
       argv: >-
-        {{ sudo_root_argv + ["mv", nginx_stage.stdout ~ "/nginx", nginx_config_dir] }}
+        {{ ["mv", nginx_stage.path ~ "/nginx", nginx_config_dir] }}
   # 검증과 reload 절차는 복구 때도 동일하게 사용합니다.
   - name: 새 설정 검사와 reload
     ansible.builtin.include_tasks: validate-reload.yml
@@ -103,7 +93,7 @@
     ansible.builtin.include_tasks: restore-directory.yml
     vars:
       restore_target: '{{ nginx_static_dir }}'
-      restore_stage: '{{ static_stage.stdout }}'
+      restore_stage: '{{ static_stage.path }}'
     when: static_backup_move is defined and static_backup_move is succeeded
   - name: 기존 설정 복구와 reload
     when: nginx_backup_move is defined and nginx_backup_move is succeeded
@@ -112,7 +102,7 @@
         ansible.builtin.include_tasks: restore-directory.yml
         vars:
           restore_target: '{{ nginx_config_dir }}'
-          restore_stage: '{{ nginx_stage.stdout }}'
+          restore_stage: '{{ nginx_stage.path }}'
       - name: 복원한 설정 검사와 reload
         ansible.builtin.include_tasks: validate-reload.yml
   # 실행 로그에 표시할 작업 이름입니다.
@@ -149,5 +139,5 @@
     # 화면에 출력할 문자열입니다. {{ 변수 }} 부분은 실제 값으로 치환됩니다.
     msg:
     - '{{ inventory_hostname }}: 설정·정적 파일 복사, nginx -t, reload, HTML·CSS HTTP 200 확인 완료'
-    - '기존 설정 백업: {{ nginx_stage.stdout }}.backup'
-    - '기존 정적 파일 백업: {{ static_stage.stdout }}.backup'
+    - '기존 설정 백업: {{ nginx_stage.path }}.backup'
+    - '기존 정적 파일 백업: {{ static_stage.path }}.backup'

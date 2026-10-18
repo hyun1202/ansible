@@ -1,220 +1,140 @@
 # Ansible 신규 서버 구축 실습
 
-신규 서버를 Rocky Linux 8로 가정한 실습입니다. 실제 운영 서버의 CentOS 버전은 아직 확인하지 않았습니다.
+원본 서버에서 nginx 설정·정적 파일·서비스 폴더를 수집해 Rocky Linux 8 대상 두 대에 배포합니다. 파일 전송과 공통 서비스에는 SSH 키 계정을, nginx와 패키지 설치에는 실행 시 입력한 개발자 계정을 사용합니다. su 전환은 사용하지 않습니다.
 
-| 컨테이너 | OS | 역할 |
+| 서버 | 키 계정 | 역할 |
 | --- | --- | --- |
-| control | Ubuntu 24.04 | Ansible Core 2.19.14와 rsync 실행 |
-| source | Rocky Linux 8 | 운영 서버 역할의 nginx와 정적 파일 원본 |
-| target, target2 | Rocky Linux 8 | 신규 서버, 일반 계정 업로드 후 관리자 계정으로 반영 |
+| control | — | Ansible Core 2.19.14, rsync 실행 및 수집본 보관 |
+| source | ansible | nginx 설정·정적 파일·공통 서비스 원본 |
+| target, target2 | deploy | 신규 구축 대상 |
 
-Compose 프로젝트는 `ansible-study`이며 호스트 포트는 공개하지 않습니다. 기존 MariaDB는 별도 프로젝트로 유지됩니다. Rocky 컨테이너에는 Ansible 모듈 실행용 Python 3.9를 설치했습니다.
+source와 target은 Rocky 8, control은 Ubuntu 24.04입니다. Ansible 실행용 Python은 Rocky에 설치한 Python 3.9입니다. 원본은 Rocky로 제한하지 않지만 SSH·Python·rsync 등 연결 조건이 맞아야 합니다.
 
-## 구성과 경로
+## 접속과 권한
 
-```text
-source:/etc/nginx/             → control:/workspace/collected/nginx/
-source:/usr/share/nginx/html/  → control:/workspace/collected/static/
-                                       ↓
-                          target, target2:/home/deploy/staging/
-                                       ↓ su → sudo cp
-                          /etc/nginx/ + /usr/share/nginx/html/
-```
+| 작업 | 접속 방식 | 권한 |
+| --- | --- | --- |
+| nginx 원본 사본 준비·정리 | 입력한 개발자 계정 + SSH 비밀번호 | Ansible become으로 sudo |
+| rsync 수집·업로드 | inventory의 일반 계정 + SSH 키 | sudo 없음 |
+| nginx 최종 반영 | 입력한 개발자 계정 + SSH 비밀번호 | Ansible become으로 sudo |
+| common_services 백업·교체·실행 | deploy + SSH 키 | sudo 없음 |
+| 패키지 설치·최초 폴더 준비 | 입력한 개발자 계정 + SSH 비밀번호 | Ansible become으로 sudo |
 
-Mac의 `workspace/`가 control의 `/workspace`에 연결됩니다. 수집본은 한 벌만 유지합니다. rsync는 설정과 정적 파일을 각각 동기화하며, 원본에서 삭제된 파일은 수집 및 업로드용 폴더에서도 제거합니다. 원본 nginx 설정과 정적 파일의 내용·권한은 변경하지 않습니다. 관리자 수집 모드에서는 별도 임시 사본을 생성한 뒤 정리합니다.
-
-source의 nginx 설정은 `/usr/share/nginx/html`을 root로 사용합니다. `/`는 HTML을, `/static/app.css`는 CSS 파일을 제공합니다. 타겟의 초기 응답은 `new target: before deployment`입니다. 실제 운영 서버에서는 `nginx -T`와 `root`·`alias`를 확인해 경로를 맞춰야 합니다. `/etc/nginx/` 밖의 인증서나 모듈, 다른 웹 루트는 자동 수집되지 않습니다.
-
-## 계정
-
-- source의 `ansible`: SSH 및 수집용 사본을 읽는 계정, sudo 권한 없음
-- source의 `adminuser`: su 전환 후 sudo로 인증서를 포함한 수집용 사본을 준비하는 계정
-- 타겟의 `deploy`: SSH 및 업로드 전용, sudo 권한 없음
-- 타겟의 `adminuser`: su 전환용, wheel 그룹 소속이며 비밀번호로 sudo 사용
-
-타겟은 deploy만 SSH 접속할 수 있습니다. 실습용 adminuser 비밀번호는 source와 두 타겟에서 동일하고 아래 명령으로 확인합니다. 실제 운영 비밀번호를 사용하지 마세요.
+개발자 계정은 서버에 직접 SSH 접속할 수 있고 sudo 권한이 있어야 합니다. 실습에서는 개발자 예시로 adminuser를 사용하며, source와 target 모두 같은 `.lab/adminuser_password`를 사용합니다. 실제 서버에서는 본인 계정을 입력합니다. 원본과 대상 접속 정보는 별도로 받습니다.
 
 ```sh
+# 실습용 비밀번호 확인 (실제 운영 비밀번호를 이 파일에 저장하지 마세요)
 cat .lab/adminuser_password
 ```
 
-키와 비밀번호는 `.lab/`에 보관하고 Git 및 이미지 빌드에서 제외합니다. 컨테이너를 시작하면 비밀번호 파일의 값으로 adminuser 비밀번호를 다시 설정합니다.
+실습 SSH 설정에서 ansible/deploy는 키 전용이고 adminuser만 비밀번호 SSH를 허용합니다. root SSH 로그인은 막혀 있습니다. 키와 비밀번호는 `.lab/`에 보관하며 Git과 이미지 빌드에서 제외합니다.
 
-## 시작하기
+## 경로
+
+```text
+원본 /etc/nginx/                 → /srv/ansible-staging/source-임의값/nginx/
+원본 /usr/share/nginx/html/      → /srv/ansible-staging/source-임의값/static/
+                                         ↓ 키 계정 rsync pull
+control /workspace/collected/nginx/ + static/
+                                         ↓ 키 계정 rsync push
+대상 /srv/ansible-staging/upload/nginx/ + static/
+                                         ↓ 개발자 SSH + sudo
+대상 /etc/nginx/ + /usr/share/nginx/html/
+```
+
+원본 임시 사본은 일반 전송 계정만 접근하도록 0700으로 제한합니다. 원본 파일의 소유권·권한은 변경하지 않습니다. 수집 후 `always` 작업으로 이번 사본을 지우며, 수집 실패 시에도 정리합니다. 강제 종료·연결 단절로 정리 자체가 실행되지 못하면 수동 정리가 필요할 수 있습니다.
+
+`/etc/nginx/SSL_2026` 안의 실제 인증서·개인키도 함께 수집합니다. 외부 경로를 가리키는 심볼릭 링크는 링크만 보존하므로 실제 대상 파일은 별도로 준비해야 합니다. 원본을 복사하는 동안 변경이 발생하면 한 시점의 일관된 백업을 보장하지 않습니다. 설정 변경·인증서 갱신과 겹치지 않게 수집하고 사본을 위한 원본 디스크 공간도 확보하세요.
+
+control 수집본은 한 벌만 유지합니다. rsync의 delete는 수집본과 업로드용 폴더에만 적용하며 운영 원본을 삭제하지 않습니다. collected, 대상 staging, 백업에는 개인키가 포함될 수 있으므로 접근 권한을 유지하고 Git에 올리지 마세요. Mac의 workspace가 control의 /workspace에 연결됩니다.
+
+## 시작과 실행
 
 ```sh
-cd /Users/hyun/Study/ansible
 ./init.sh
-/opt/homebrew/bin/docker-compose up -d --build
-/opt/homebrew/bin/docker-compose exec control ansible lab -m ansible.builtin.ping
+docker-compose up -d --build
+docker-compose exec control ansible lab -m ansible.builtin.ping
 ```
 
-이 Mac은 Colima와 `/opt/homebrew/bin/docker-compose`를 사용합니다. 타겟의 nginx는 실습 환경 구성 시 미리 설치하고 실행합니다.
+이 Mac의 Compose 실행 파일은 `/opt/homebrew/bin/docker-compose`입니다. Compose 프로젝트는 ansible-study이며 외부 포트는 열지 않습니다. 다른 프로젝트의 컨테이너는 건드리지 않습니다.
 
-서버 목록은 `workspace/inventory.ini` 하나로 관리합니다. `config_sources`는 수집 원본, `lab`은 설치·업로드·반영 대상입니다. 각 플레이북의 `hosts`가 실행 그룹을 선택합니다. `ansible.cfg`가 이 파일을 기본 inventory로 사용하므로 아래 명령에서는 `-i`를 생략합니다.
-
-## 전체 실습을 한 번에 실행
+서버 목록은 `workspace/inventory.ini` 하나입니다. config_sources는 원본, lab은 대상이며 플레이북의 hosts가 실행 그룹을 선택합니다. 개발자 접속은 같은 서버 주소에 실행 중 메모리의 별칭을 만들어 사용하므로 inventory 파일에 개인 계정이나 비밀번호를 적지 않습니다.
 
 ```sh
-/opt/homebrew/bin/docker-compose exec control ansible-playbook setup.yml
+# 전체: 인증 입력 → 사전 검사 → 설치 → 수집 → 업로드 → 반영
+docker-compose exec control ansible-playbook setup.yml
+
+# 필요한 단계만 따로 실행
+docker-compose exec control ansible-playbook preflight.yml
+docker-compose exec control ansible-playbook install.yml
+docker-compose exec control ansible-playbook fetch.yml
+docker-compose exec control ansible-playbook upload.yml
+docker-compose exec control ansible-playbook apply.yml
 ```
 
-인증 정보 입력 → 사전 검사 → 누락 패키지·Java 11 설치 → 수집 → 업로드 → su 전환 → sudo로 설정·정적 파일 복사 및 교체 → nginx -t → reload → HTML·CSS HTTP 200 확인 순서입니다. 시작 시 원본과 대상의 관리자 계정명·su 비밀번호·sudo 비밀번호를 각각 한 번 입력합니다. 대상 정보는 install과 apply에서 재사용하므로 같은 실행 안에서 다시 묻지 않습니다. 실습에서는 source와 target 모두 adminuser와 같은 로컬 비밀번호를 쓰지만, 입력과 보관은 원본/대상으로 분리합니다.
+setup은 원본·대상의 개발자 계정명, SSH 비밀번호, sudo 비밀번호를 각각 한 번 입력받아 후속 단계에서 재사용합니다. fetch 단독은 원본 정보만, install 단독은 대상 정보만, nginx를 포함한 apply 단독은 대상 정보만 받습니다. common_services만 선택한 apply에는 개발자 인증이 필요 없습니다. preflight와 upload는 키 계정으로만 실행합니다.
 
-## 단계별 실행
+입력은 대화형 터미널에서 실행하세요. 비밀번호를 파일에 자동 저장하거나 fact cache에 기록하지 않습니다. 인증 값과 동적 연결 정보는 no_log로 숨깁니다. 다음 ansible-playbook 실행에서는 다시 입력합니다. 비대화형 실행 시에는 Vault 등으로 source_admin_user/source_admin_ssh_password/source_admin_sudo_password와 admin_user/admin_ssh_password/admin_sudo_password를 제공할 수 있습니다. 비밀번호를 명령행에 직접 적지 마세요.
 
-```sh
-# 1. 원본과 신규 구축 대상의 준비 상태 확인
-/opt/homebrew/bin/docker-compose exec control ansible-playbook preflight.yml
+`apply.yml --limit target`으로 한 대만 먼저 반영할 수 있습니다. 수집·업로드·반영은 순서대로 실행하고 동시에 실행하지 않습니다. fetch는 시작 시 완료 표시를 제거하고 수집과 원본 사본 정리가 모두 성공한 뒤 다시 생성합니다. upload는 완료 표시가 있어야 진행합니다.
 
-# 2. 누락된 패키지와 Java 11 설치
-/opt/homebrew/bin/docker-compose exec control ansible-playbook install.yml
-
-# 3. 최신 nginx 설정과 정적 파일 수집
-/opt/homebrew/bin/docker-compose exec control ansible-playbook fetch.yml
-
-# 4. 두 신규 서버의 deploy 폴더에 업로드
-/opt/homebrew/bin/docker-compose exec control ansible-playbook upload.yml
-
-# 5. 관리자 계정 전환 후 최종 반영
-/opt/homebrew/bin/docker-compose exec control ansible-playbook apply.yml
-```
-
-완료한 단계를 건너뛰려면 필요한 플레이북만 실행합니다. `setup.yml`은 항상 인증 입력과 사전 검사부터 다시 실행합니다. `apply.yml --limit target`으로 한 대만 먼저 반영할 수도 있습니다.
-
-수집 시작 시 `.complete` 표시를 지우고 설정·정적 파일 수집과 원본 임시 사본 정리까지 성공했을 때 다시 만듭니다. 업로드는 이 표시를 확인합니다. 수집·업로드·반영은 순서대로 실행하고 동시에 진행하지 않습니다.
-
-최종 반영은 한 대씩 처리합니다. su는 Ansible become으로, sudo는 `sudo -S` 표준 입력 인증으로 처리합니다. 비밀번호 관련 명령은 no_log로 숨기고 명령행 인자에 비밀번호를 넣지 않습니다. 계정 간 임시 파일 접근을 위해 acl을 설치합니다.
-
-기존 설정 및 정적 파일은 각 작업 디렉터리 옆의 `.backup` 경로로 보관합니다. 복사·배치·nginx 검사·reload 블록에서 실패하면 이미 백업한 항목을 복구하고 중단합니다. 이후 HTTP 확인 실패는 자동 원복하지 않습니다. 여러 서버 전체를 일괄 원복하지 않으며 앞서 성공한 서버는 유지됩니다. 백업과 진단용 작업 폴더는 자동 삭제하지 않습니다.
-
-## 인증 입력과 보호된 인증서 수집
-
-`setup.yml`은 원본 정보와 대상 정보를 각각 한 번만 입력받습니다. `fetch.yml` 단독 실행은 원본 정보만, `install.yml` 또는 `apply.yml` 단독 실행은 대상 정보만 입력받습니다. `preflight.yml`과 `upload.yml`은 관리자 정보를 묻지 않습니다. 입력값은 localhost의 실행 중 메모리 fact로 공유하며 `cacheable: false`와 `no_log`를 사용합니다. 다음 ansible-playbook 실행에서는 다시 입력합니다. 비밀번호 파일이나 Vault를 자동 생성하지 않습니다.
-
-기본값 `nginx_source_use_sudo: true`에서는 일반 SSH 계정 → su 관리자 → sudo 순서로 `/var/tmp/ansible-nginx.*`에 nginx 설정과 static 사본을 만듭니다. `/etc/nginx/SSL_2026` 안의 실제 인증서·개인키도 포함합니다. 사본의 소유자만 SSH 계정으로 바꾸고 바깥 임시 폴더는 0700으로 제한한 뒤 일반 계정의 rsync로 control에 수집합니다. 원본 파일의 소유자·권한은 그대로 유지합니다. root 소유 0600 개인키도 이 방식으로 수집할 수 있습니다.
-
-사본은 수집 성공·실패 후 always 작업으로 제거합니다. 강제 종료나 연결 단절로 정리 작업 자체가 실행되지 못한 경우에는 원본의 임시 경로를 확인해 수동 정리해야 합니다. 사본을 만드는 동안 원본이 바뀌면 일관된 시점의 백업을 보장하지 않으므로 설정 변경·인증서 교체와 겹치지 않게 수집하세요. 임시 사본을 위한 원본 디스크 여유 공간도 필요합니다.
-
-심볼릭 링크는 링크 자체를 보존합니다. `/etc/nginx` 밖을 가리키는 인증서 링크의 실제 대상은 별도로 준비해야 합니다. control의 collected, 대상 staging 및 백업에는 개인키가 포함될 수 있으므로 접근 권한과 Git 제외를 유지하세요. root 전용 사본 준비는 nginx role에만 적용하며 common_services는 기존처럼 일반 계정으로 읽습니다.
-
-원본 SSH 계정이 모든 nginx 파일을 읽을 수 있고 관리자 사본이 필요 없다면 environment.yml의 nginx_source_use_sudo를 false로 바꾸세요. 이 경우 원본 관리자 입력과 임시 사본 준비를 생략합니다. 관리자 모드의 원본 nginx 경로 검사는 fetch에서 sudo로 수행하므로 preflight 단독 성공만으로 인증서 접근 권한까지 검증한 것은 아닙니다.
-
-대화형 입력에는 `docker-compose exec control ...`을 사용합니다. 비대화형 자동화가 필요하면 Ansible Vault 등으로 source_admin_user/source_admin_su_password/source_admin_sudo_password와 admin_user/admin_su_password/admin_sudo_password 변수를 제공할 수 있습니다. 비밀번호를 명령행에 직접 적거나 공개 저장소에 저장하지 마세요.
-
-## 패키지 준비와 Java 11
-
-신규 서비스 구축을 위한 흐름이며, 준비된 서버에 기존 패키지와 파일이 있을 수 있습니다. 설치된 패키지는 rpm으로 조회하고 누락된 것만 dnf install로 설치합니다. 기존 nginx 패키지를 재설치하지 않으며 설정·정적 파일은 apply 단계에서 교체합니다. 누락 패키지 설치 과정에서 의존성 패키지가 추가되거나 갱신될 수 있습니다.
-
-기본 설치 목록은 rsync, curl, acl, java-11-openjdk-headless이며 nginx role을 선택하면 nginx도 포함합니다. JAR 실행용 Java 11 런타임입니다. 컴파일 도구가 필요하면 bootstrap_packages에 java-11-openjdk-devel을 추가하세요. java_home은 /usr/lib/jvm/jre-11-openjdk이며 공통 서비스의 종료·시작·확인 명령에 JAVA_HOME과 PATH를 전달합니다. 시스템 전체 기본 Java는 변경하지 않습니다. 스크립트 내부에서 Java 경로를 직접 고정했다면 스크립트도 확인해야 합니다.
-
-SSH 접속 계정, su 가능한 관리자 계정과 sudo 권한, 호환되는 Python 및 계정 간 Ansible 임시 파일 접근에 필요한 ACL 설정은 미리 준비해야 합니다. 필요한 서비스 소유자·그룹도 자동 생성하지 않습니다. 실제 systemd 서버에서는 설치 단계가 nginx를 enable --now로 준비합니다. Docker 실습은 entrypoint가 nginx를 실행합니다. 공통 서비스의 부팅 시 자동 실행 등록은 포함하지 않습니다.
-
-사전 검사는 원본 폴더·스크립트 접근, Rocky 8 여부, 서비스 계정·그룹, 대상 파일 시스템 여유 공간을 확인합니다. minimum_free_bytes는 기본 1 GiB의 하한선이며 실제 파일 크기를 계산한 용량 보장은 아닙니다. 백업과 수집본 크기에 맞춰 조정하세요. 실습 source에는 네 서비스의 모의 프로세스와 start.sh·stop.sh·check.sh, 복사 전용 deploy.sh가 준비됩니다. nginx만 연습하려면 enabled_roles를 [nginx]로 지정하세요.
-
-## 직접 확인
-
-```sh
-/opt/homebrew/bin/docker-compose exec control ssh deploy@target
-su - adminuser
-sudo nginx -t
-python3.9 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1/').read().decode())"
-python3.9 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1/static/app.css').read().decode())"
-```
-
-HTML에 `legacy nginx configuration v1`이 표시되고 CSS가 응답하면 정적 파일까지 반영된 것입니다. 두 번째 타겟은 `deploy@target2`로 접속합니다.
-
-## role과 변수 구조
+## 변수와 role
 
 ```text
 workspace/
-├─ setup.yml                    # 전체 실행
-├─ preflight.yml / install.yml # 사전 검사와 패키지 준비
-├─ tasks/                      # 공통 사전 검사 작업
-├─ fetch.yml / upload.yml / apply.yml
+├─ setup.yml
+├─ preflight.yml / install.yml / fetch.yml / upload.yml / apply.yml
+├─ inventory.ini
 ├─ vars/
-│  ├─ environment.yml           # role 선택, 공통 경로, nginx 경로·검증 주소
-│  └─ services.yml              # Loki·Alloy·Scouter·node exporter·deploy 목록
+│  ├─ environment.yml          # 경로·Java·검사 설정
+│  └─ services.yml             # 공통 서비스 목록
+├─ tasks/                     # 인증 입력·개발자 연결·사전 검사
 └─ roles/
-   ├─ nginx/
-   │  ├─ defaults/main.yml
-   │  └─ tasks/main.yml, fetch.yml, upload.yml, apply.yml
-   └─ common_services/
-      ├─ defaults/main.yml
-      └─ tasks/main.yml, fetch.yml, upload.yml, apply.yml
+   ├─ nginx/                  # 인증서 포함 설정·정적 파일
+   └─ common_services/        # 키 계정이 관리하는 서비스
 ```
 
-상위의 setup.yml, fetch.yml, upload.yml, apply.yml은 현재 사용하는 진입 플레이북입니다. 대상 서버와 단계, 비밀번호 입력을 담당하며 role이 실제 작업을 수행합니다.
+role의 main.yml은 deployment_phase에 해당하는 fetch/upload/apply.yml을 호출합니다. common_services는 services.yml의 목록을 반복합니다. validate.yml은 이름 중복·경로·명령 목록 형식 같은 변수 오류를 검사합니다.
 
-반영 명령의 공통 sudo 옵션은 `vars/execution.yml`에서 관리합니다. 개별 작업은 `sudo_root_argv + ["cp", ...]`처럼 실제 명령만 덧붙입니다. 서비스 실행 계정·Java 환경·작업 폴더 설정은 `roles/common_services/defaults/main.yml`의 `service_command_prefix`를 종료·시작·확인 명령에서 재사용합니다.
+- enabled_roles: 실행할 role. nginx만 연습하려면 `[nginx]`.
+- collection_root: control의 수집본 경로.
+- source_staging_root: 원본 임시 사본 상위 경로, 기본 `/srv/ansible-staging`.
+- staging_root: 대상 업로드 경로, 기본 `/srv/ansible-staging/upload`.
+- nginx_config_dir / nginx_static_dir: 대상 설정·정적 파일 경로.
+- nginx_source_config_dir / nginx_source_static_dir: 수집할 원본 경로.
+- nginx_source_use_sudo: true이면 개발자 계정으로 수집 사본 준비. false이면 원본 키 계정으로 직접 읽으며 원본 인증 입력은 생략.
+- java_home: 기본 `/usr/lib/jvm/jre-11-openjdk`.
+- minimum_free_bytes: 대상 파일 시스템의 최소 여유 공간. 기본 1 GiB이며 실제 수집본·백업 용량 보장은 아님.
 
-nginx는 `restore-directory.yml`로 설정·정적 파일의 복구 절차를 공유하고, `validate-reload.yml`로 새 설정과 복구한 설정 모두 동일하게 검사 후 reload합니다. 계정 전환과 비밀번호 숨김은 이를 호출하는 apply 블록에서 상속합니다.
+## 설치와 반영
 
-common_services의 main.yml이 서비스 목록을 반복하면서 해당 단계 파일을 직접 호출합니다. 중간 호출 전용 파일 없이 main → fetch/upload/apply로 실행됩니다.
+install은 누락된 rsync·curl·acl·Java 11 런타임 및 선택한 nginx를 설치합니다. Rocky 8의 시스템 DNF 바인딩은 Python 3.6용이므로 Ansible용 Python 3.9에서는 rpm/dnf CLI를 사용하고, root 권한은 Ansible become이 처리합니다. 다른 파일 작업은 file/copy/tempfile 모듈을 사용합니다. 기존 패키지를 강제로 재설치하지 않지만 의존성 해결 과정에서 패키지가 추가·갱신될 수 있습니다.
 
-### 경로 변경: vars/environment.yml
+install은 staging과 없는 서비스 폴더를 지정한 소유자·그룹으로 준비합니다. 기존 서비스 폴더의 소유권은 강제로 바꾸지 않습니다. 계정과 그룹은 미리 존재해야 하며, 공통 서비스의 owner와 start_user는 키 접속 계정과 같아야 합니다. `/srv` 자체를 deploy 소유로 바꾸지 않습니다. 시스템 기본 Java는 바꾸지 않고 서비스 명령에 Java 11의 JAVA_HOME과 PATH를 전달합니다. 스크립트에 Java 경로를 직접 고정했다면 별도로 확인하세요.
 
-- `collection_root`: control에 보관하는 공통 수집 폴더
-- `staging_root`: 신규 서버 SSH 계정이 쓰는 업로드 폴더
-- `nginx_config_dir`, `nginx_static_dir`: 신규 서버 최종 경로
-- `nginx_source_config_dir`, `nginx_source_static_dir`: 원본 경로, 기본값은 신규 서버와 동일
-- `nginx_binary`: nginx 실행 파일 경로
-- `nginx_check_base_url`, `nginx_check_paths`: HTTP 확인 주소와 경로
-- `enabled_roles`: 실행할 role 목록. 기본값은 nginx와 common_services
+nginx는 개발자 접속에 sudo become을 적용해 업로드 파일을 root 작업 폴더에 복사하고, 기존 설정·정적 파일을 백업한 뒤 디렉터리를 교체합니다. 이동에는 mv를 사용합니다. nginx -t 성공 후 reload하며, 반영 블록 실패 시 백업한 항목을 복구합니다. HTTP 확인은 그 블록 밖이므로 HTTP 확인 실패에는 자동 원복하지 않습니다. 실제 systemd 서버에서는 install이 nginx를 자동 시작하도록 준비하고, 컨테이너에서는 entrypoint가 실행합니다.
 
-nginx 경로를 바꾸면 nginx.conf 안의 include/root/pid 경로 및 nginx 실행 설정도 일치해야 합니다. 수집한 설정 파일 내용은 자동 치환하지 않습니다. SSH 계정·주소·Python 경로는 inventory에서 관리합니다.
+공통 서비스는 deploy 계정으로 현재 폴더의 stop.sh를 실행하고, 내용을 staging의 서비스 작업 폴더 안 previous에 백업합니다. `/srv`에 쓰기 권한이 없어도 동작하도록 서비스 디렉터리 자체는 유지하고 내부 파일·하위 폴더를 교체합니다. 따라서 제외한 기존 로그·데이터와 원본에 없는 파일은 새 서비스 폴더에 남지 않고 백업에만 남습니다. 교체 후 start.sh, check.sh 순서로 실행합니다. 실패 시 자동 원복·재기동하지 않고 백업 위치를 안내합니다. 백업과 대상 업로드 파일은 자동 삭제하지 않습니다.
 
-### 서비스 추가: vars/services.yml
+## 공통 서비스 실습
 
-`services.yml`에는 /home/deploy 아래의 loki, alloy, scouter, node_exporter, deploy 폴더를 가정한 예시 다섯 개가 들어 있습니다. Docker source에는 이 경로에 실습 파일을 생성합니다. 실제 서버에 적용할 때는 경로와 제외 목록을 확인하세요. Loki·Alloy·Scouter·node exporter는 기존 폴더의 `./stop.sh`로 종료하고 새 폴더의 `./start.sh`로 시작합니다. 두 스크립트에 실행 권한이 필요합니다. deploy 항목은 파일만 배치합니다. 네 실습 서비스의 check_argv는 ./check.sh로 설정되어 HTTP 응답과 프로세스를 확인합니다. 실제 제품에 적용할 때는 정상 확인 명령을 맞춰야 합니다. 공통 서비스를 건너뛰려면 common_services: []로 바꾸거나 environment.yml의 enabled_roles를 [nginx]로 지정합니다. 아래도 설명용 예시입니다.
+source 이미지에는 `/srv/loki`, `/srv/alloy`, `/srv/scouter`, `/srv/node_exporter`와 `/srv/deploy`가 준비됩니다. 앞의 네 서비스는 실제 제품 대신 가벼운 실습용 HTTP 프로세스이며 start.sh·stop.sh·check.sh를 제공합니다. 마지막 deploy.sh는 복사만 하고 자동 실행하지 않습니다.
 
-```yaml
-common_services:
-  - name: alloy
-    path: /home/deploy/alloy
-    owner: alloy
-    group: alloy
-    excludes: ["logs/", "data/"]
-    start_user: alloy
-    stop_argv: ["./stop.sh"]
-    start_argv: ["./start.sh"]
-    check_argv: ["./check.sh"]
-  - name: deploy
-    path: /home/deploy/deploy
-    owner: deploy
-    group: deploy
-    start_argv: []
-```
-
-`path`를 원본·대상에 동일하게 사용하며 필요한 경우 `source_path`로 원본만 바꿀 수 있습니다. 서비스별 수집본은 `collected/common_services/<name>/files/`, 업로드는 `<staging_root>/common_services/<name>/files/`에 보관합니다. 제외 패턴은 원본 디렉터리 기준입니다. 수집 폴더마다 완료 표시를 확인합니다.
-
-복사할 때 실행 권한과 심볼릭 링크를 보존하고 소유권을 owner/group으로 맞춥니다. 해당 사용자·그룹은 대상에 미리 있어야 합니다. 실행·검증 명령은 문자열 하나가 아니라 인자 목록이며, 서비스 폴더에서 start_user(생략 시 owner) 계정으로 실행됩니다. 시작 스크립트는 서비스를 기동한 후 종료되어야 합니다. start_argv가 비어 있으면 복사만 하며 deploy 스크립트를 자동 실행하지 않습니다. check_argv는 선택 사항으로, 정상일 때 종료 코드 0을 반환하는 명령을 지정합니다.
-
-공통 서비스는 기존 폴더가 있으면 그 폴더의 stop.sh가 성공한 뒤 폴더 전체를 작업 경로의 previous로 옮겨 백업합니다. 준비한 수집본으로 최종 폴더를 통째로 교체하므로 원본에서 사라진 파일이나 제외한 로그·데이터는 새 폴더에 남지 않습니다. 기존 내용은 백업에 보관합니다. stop.sh는 이미 중지된 경우에도 성공하도록 작성해야 하며, start.sh는 서비스를 시작한 뒤 종료되어야 합니다. 종료 명령이 실패하면 교체하지 않습니다. 교체·시작·검증 실패 시 자동 원복이나 재기동을 하지 않고 작업·백업 경로를 알립니다. 해당 서비스가 중지된 상태일 수 있으므로 경로를 확인한 뒤 수동 복구합니다. nginx는 기존 검사·원복 동작을 유지합니다.
-
-일반 파일의 위치만 바뀌면 변수 파일만 수정하면 됩니다. Loki와 Alloy, Scouter, node exporter는 각 서비스마다 role이나 fetch 파일을 추가하지 않고 목록에 항목을 추가합니다.
-
-## 공통 서비스 실습 원본
-
-source 이미지 빌드 시 `/home/deploy/loki`, `alloy`, `scouter`, `node_exporter`에 동일한 실습용 HTTP 프로그램과 start.sh·stop.sh·check.sh를 만듭니다. 실제 Loki·Alloy·Scouter·node exporter 바이너리가 아니며, 파일 수집·전체 교체·계정별 실행·정상 확인을 연습하기 위한 모의 서비스입니다. source에서는 파일을 제공하고, setup.yml을 실행하면 target과 target2에서 기동합니다.
-
-각 서비스의 service.json에 이름과 포트가 있습니다. 포트는 순서대로 19101~19104이며 각 컨테이너의 127.0.0.1에만 바인딩합니다. logs에는 실행 로그와 PID가 생기고 수집에서 제외됩니다. 원본의 logs/source-only.log가 수집본에 없는지도 확인할 수 있습니다. `/home/deploy/deploy/deploy.sh`는 복사만 하며 자동 실행하지 않습니다.
-
-전체 실습 후 다음 명령으로 target을 확인할 수 있습니다. target2도 같은 방식입니다.
+각 서비스는 127.0.0.1의 19101~19104 포트를 사용합니다. logs에는 PID와 실행 로그가 생기고 수집에서 제외됩니다. 시작 스크립트는 실행 후 종료되어야 하며 종료 스크립트는 이미 중지된 경우에도 성공해야 합니다. 전체 실행을 다시 하면 종료·백업·교체·재시작을 연습할 수 있습니다.
 
 ```sh
-docker-compose exec control ssh deploy@target /home/deploy/loki/check.sh
-docker-compose exec control ssh deploy@target /home/deploy/alloy/check.sh
-docker-compose exec control ssh deploy@target /home/deploy/scouter/check.sh
-docker-compose exec control ssh deploy@target /home/deploy/node_exporter/check.sh
+docker-compose exec control ssh deploy@target /srv/loki/check.sh
+docker-compose exec control ssh deploy@target /srv/alloy/check.sh
+docker-compose exec control ssh deploy@target /srv/scouter/check.sh
+docker-compose exec control ssh deploy@target /srv/node_exporter/check.sh
 ```
 
-두 번째 setup.yml 실행에서는 기존 서비스의 stop.sh → 기존 폴더 백업 → 새 수집본 배치 → start.sh → check.sh 순서를 연습할 수 있습니다. 실습용 스크립트는 이미 시작되었거나 중지된 경우에도 성공합니다. 실제 서비스의 프로토콜·Java 호환성·운영 설정은 이 모의 프로세스로 검증하지 않습니다.
+실제 서비스에 적용할 때는 services.yml의 경로, 제외 패턴, 시작·종료·검증 명령을 수정하세요. source_path를 지정하면 대상 path와 다른 원본 경로에서 수집할 수 있습니다. check_argv가 비어 있으면 정상 동작 검증은 생략합니다.
 
-## 중지와 실습 범위
+## 실습 범위
 
-`docker-compose stop`과 `start`는 컨테이너 내부 작업을 유지합니다. `down`이나 컨테이너 재생성은 내부 실습 변경을 초기화합니다. Mac의 workspace 및 .lab은 유지됩니다.
+사전 검사는 원본 서비스 폴더·스크립트, 대상 Rocky 8 여부·계정·여유 공간을 확인합니다. 관리자 모드의 nginx 경로 접근은 fetch에서 확인하므로 preflight 성공만으로 개발자 SSH·sudo·인증서 접근까지 검증한 것은 아닙니다.
 
-Ubuntu 실습 당시 설정과 업로드 파일은 `.lab/pre-rocky-*`에 백업했습니다. 이전 수집본은 Rocky에 그대로 적용하지 않도록 백업으로 옮겼습니다. 새 환경에서는 수집부터 다시 진행하세요.
+일반 Docker 컨테이너이므로 실제 systemd 동작, SELinux 정책·파일 컨텍스트, 공통 서비스의 부팅 시 자동 실행은 별도 검증이 필요합니다. Mac 실습은 ARM64이므로 실제 서버의 CPU 아키텍처·nginx 버전·모듈도 확인해야 합니다. 모의 서비스로 실제 제품의 설정이나 Java 호환성이 검증되지는 않습니다.
 
-일반 Docker 컨테이너이므로 systemd, 부팅 시 서비스 실행, 실제 SELinux 정책 및 파일 컨텍스트는 이 실습으로 검증하지 않습니다. 실제 Rocky 서버에서는 이 항목을 추가 검증해야 합니다. 현재 Mac 실습은 ARM64이며 운영 서버의 CPU 아키텍처·nginx 버전·모듈도 별도로 확인해야 합니다. CentOS에서 수집한 설정을 Rocky에 그대로 적용할 수 있다고 보장하지 않습니다.
+Compose stop/start는 컨테이너 내부 파일을 유지하지만 down 또는 재생성은 초기화할 수 있습니다. Mac의 workspace와 .lab은 유지됩니다. 예전 /home/deploy 경로의 실습 파일은 자동 삭제하지 않습니다.

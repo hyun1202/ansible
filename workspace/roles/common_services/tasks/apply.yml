@@ -1,147 +1,118 @@
-# Ansible YAML: 들여쓰기는 소속 관계, -는 목록 항목, {{ 변수 }}는 실행 시 값 치환을 뜻합니다.
-# sudo 옵션: -S는 stdin에서 비밀번호 읽기, -k는 인증 캐시 무시, -p 뒤 빈 문자열은 프롬프트 숨김, --는 옵션 끝입니다.
-# argv의 각 항목은 명령 또는 인자 하나입니다. cp -a는 재귀·속성 보존, --no-preserve=ownership은 원본 소유권 보존 생략입니다.
+# 이 파일은 키 계정으로만 실행합니다. su와 sudo를 사용하지 않습니다.
 ---
-# 실행 로그에 표시할 작업 이름입니다.
 - name: 현재 서비스의 작업 결과 초기화
-  # 현재 호스트에서 후속 작업에 사용할 변수 값을 저장합니다.
   ansible.builtin.set_fact:
-    # 이전 서비스의 작업 경로가 남지 않도록 빈 결과로 초기화합니다.
     service_stage: {}
-# 실행 로그에 표시할 작업 이름입니다.
-- name: 관리자 전환 후 서비스 파일 배치와 실행
-  # true이면 아래 작업을 다른 계정으로 전환하여 실행하고, false이면 SSH 접속 계정을 사용합니다.
-  become: true
-  # SSH 접속 후 su를 사용해 관리자 일반 계정으로 전환합니다.
-  become_method: su
-  # su로 전환할 계정입니다. root 작업은 이후 명령 안의 sudo가 수행합니다.
-  become_user: '{{ admin_user }}'
-  # true이면 입력값과 결과를 로그에서 숨깁니다. false인 안내 작업은 메시지를 보여줍니다.
-  no_log: true
-  # 이 블록 안에서 사용하는 모듈에 공통 기본 인자를 지정합니다.
-  module_defaults:
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # sudo -S가 읽도록 입력받은 sudo 비밀번호를 표준 입력으로 전달합니다.
-      stdin: '{{ admin_sudo_password }}'
-  # 공통 계정 전환과 옵션을 적용할 작업 묶음입니다.
+- name: 키 계정으로 공통 서비스 배치와 실행
+  become: false
+  # 스크립트에서 Java 11을 사용합니다. 시스템 기본 Java는 변경하지 않습니다.
+  environment:
+    JAVA_HOME: '{{ java_home }}'
+    PATH: '{{ java_home }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
   block:
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 서비스 업로드 폴더 확인
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["test", "-d", staging_root ~ "/common_services/" ~ service.name ~ "/files"] }}
-    # false이면 조회·검사 작업을 변경 발생으로 집계하지 않습니다.
-    changed_when: false
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 최종 경로의 상위 디렉터리 준비
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["mkdir", "-p", (service.path | dirname)] }}
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 서비스 작업 폴더 생성
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["mktemp", "-d", (service.path | dirname) ~ "/.ansible-" ~ service.name ~ ".XXXXXX"] }}
-    # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
-    register: service_stage
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 업로드 파일을 관리자 작업 폴더로 복사
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["cp", "-a", "--no-preserve=ownership", staging_root ~ "/common_services/" ~ service.name ~ "/files", service_stage.stdout ~ "/payload"] }}
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 배치할 파일 소유권 설정
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["chown", "-R", service.owner ~ ":" ~ service.group, service_stage.stdout ~ "/payload"] }}
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 기존 서비스 폴더 확인
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # 명령과 인자를 목록으로 전달합니다. {{ 결과.stdout }}은 이전 명령이 출력한 작업 폴더 경로입니다.
-      argv: >-
-        {{ sudo_root_argv + ["test", "-d", service.path] }}
-    # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
-    register: service_existing
-    # false이면 조회·검사 작업을 변경 발생으로 집계하지 않습니다.
-    changed_when: false
-    # 기본 실패 판정 대신 이 조건으로 실패 여부를 판단합니다. test의 0은 존재, 1은 없음입니다.
-    failed_when: service_existing.rc not in [0, 1]
-  # 기존 폴더가 있으면 그 안의 stop.sh를 실행합니다. 실패 시 교체하지 않습니다.
-  - name: 기존 서비스 종료
-    ansible.builtin.command:
-      argv: '{{ service_command_prefix + service.stop_argv }}'
-    when:
-      - service_existing.rc == 0
-      - service.stop_argv | default([]) | length > 0
-  # 종료된 기존 폴더를 통째로 보관합니다. 새 수집본에 없는 예전 파일도 백업에 남습니다.
-  - name: 기존 서비스 폴더 백업
-    ansible.builtin.command:
-      argv: >-
-        {{ sudo_root_argv + ["mv", service.path, service_stage.stdout ~ "/previous"] }}
-    when: service_existing.rc == 0
-  # 덮어쓰기 병합이 아니라 디렉터리 전체 교체입니다. 제외한 로그·데이터는 새 폴더에 없습니다.
-  - name: 서비스 파일 최종 배치
-    ansible.builtin.command:
-      argv: >-
-        {{ sudo_root_argv + ["mv", service_stage.stdout ~ "/payload", service.path] }}
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 지정한 계정으로 서비스 실행
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # sudo -u로 실행 계정을 지정하고 서비스 폴더에서 명령을 실행합니다. $1은 경로, shift 후 $@는 명령과 인자입니다.
-      argv: '{{ service_command_prefix + service.start_argv }}'
-    # 이 조건이 참일 때만 실행합니다. is defined는 변수 존재, is succeeded는 성공, rc == 0은 명령 성공을 뜻합니다.
-    when: service.start_argv | default([]) | length > 0
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 서비스 정상 기동 확인
-    # 명령과 인자를 실행합니다. argv는 각 인자를 분리해 전달합니다.
-    ansible.builtin.command:
-      # sudo -u로 실행 계정을 지정하고 서비스 폴더에서 명령을 실행합니다. $1은 경로, shift 후 $@는 명령과 인자입니다.
-      argv: '{{ service_command_prefix + service.check_argv }}'
-    # 이 조건이 참일 때만 실행합니다. is defined는 변수 존재, is succeeded는 성공, rc == 0은 명령 성공을 뜻합니다.
-    when: service.check_argv | default([]) | length > 0
-    # false이면 조회·검사 작업을 변경 발생으로 집계하지 않습니다.
-    changed_when: false
-    # 실행 결과를 이 이름의 변수에 저장합니다. .stdout은 표준 출력, .rc는 종료 코드입니다.
-    register: service_check
-    # until 조건을 만족하지 못하면 재시도합니다. 최초 실행 외에 허용하는 재시도 횟수입니다.
-    retries: 5
-    # 재시도 사이에 기다리는 시간이며 단위는 초입니다.
-    delay: 2
-    # 이 조건을 만족할 때까지 현재 작업을 재시도합니다. default(0)은 값이 없을 때 0을 사용합니다.
-    until: service_check.rc == 0
-  # block의 작업이 실패하면 실행합니다. 연결 불가나 문법 오류까지 모두 복구하는 기능은 아닙니다.
+    - name: 키 계정과 서비스 실행 계정 일치 확인
+      ansible.builtin.assert:
+        that:
+          - service.owner == ansible_user
+          - service.start_user | default(service.owner) == ansible_user
+        fail_msg: 공통 서비스는 키 접속 계정 소유로 배치하고 같은 계정으로 실행해야 합니다.
+    - name: 서비스 폴더 소유권 조회
+      ansible.builtin.stat:
+        path: '{{ service.path }}'
+        follow: false
+      register: service_directory
+    - name: 일반 계정이 관리할 서비스 폴더인지 확인
+      ansible.builtin.assert:
+        that:
+          - service_directory.stat.isdir | default(false)
+          - not (service_directory.stat.islnk | default(false))
+          - service_directory.stat.pw_name | default('') == ansible_user
+          - service_directory.stat.gr_name | default('') == service.group
+        fail_msg: install.yml로 서비스 폴더를 먼저 준비하세요. 기존 폴더 소유권은 자동으로 변경하지 않습니다.
+    - name: 업로드된 파일 확인
+      ansible.builtin.stat:
+        path: '{{ staging_root }}/common_services/{{ service.name }}/files'
+      register: service_upload
+    - name: 업로드 확인
+      ansible.builtin.assert:
+        that: service_upload.stat.isdir | default(false)
+        fail_msg: upload.yml을 먼저 실행하세요.
+    - name: 서비스 작업 폴더 준비
+      ansible.builtin.tempfile:
+        state: directory
+        path: '{{ staging_root }}'
+        prefix: '{{ service.name }}-'
+      register: service_stage
+    - name: 업로드 사본 준비
+      ansible.builtin.copy:
+        src: '{{ staging_root }}/common_services/{{ service.name }}/files/'
+        dest: '{{ service_stage.path }}/payload/'
+        remote_src: true
+        mode: preserve
+        local_follow: false
+        follow: false
+    - name: 기존 서비스 폴더의 내용 확인
+      ansible.builtin.find:
+        paths: '{{ service.path }}'
+        file_type: any
+        hidden: true
+        recurse: false
+      register: existing_entries
+    - name: 기존 서비스 종료
+      ansible.builtin.command:
+        argv: '{{ service.stop_argv }}'
+        chdir: '{{ service.path }}'
+      # install이 새로 만든 빈 폴더에는 종료할 서비스가 없습니다.
+      when:
+        - existing_entries.matched > 0
+        - service.stop_argv | default([]) | length > 0
+    - name: 기존 서비스 내용 백업
+      ansible.builtin.copy:
+        src: '{{ service.path }}/'
+        dest: '{{ service_stage.path }}/previous/'
+        remote_src: true
+        mode: preserve
+        local_follow: false
+        follow: false
+    # /srv 자체에 쓰기 권한을 요구하지 않도록 서비스 폴더를 유지하고 내부만 교체합니다.
+    - name: 백업한 기존 내용 제거
+      ansible.builtin.file:
+        path: '{{ item.path }}'
+        state: absent
+      loop: '{{ existing_entries.files }}'
+      loop_control:
+        label: '{{ item.path }}'
+    - name: 새 서비스 내용 배치
+      ansible.builtin.copy:
+        src: '{{ service_stage.path }}/payload/'
+        dest: '{{ service.path }}/'
+        remote_src: true
+        mode: preserve
+        local_follow: false
+        follow: false
+    - name: 서비스 시작
+      ansible.builtin.command:
+        argv: '{{ service.start_argv }}'
+        chdir: '{{ service.path }}'
+      when: service.start_argv | default([]) | length > 0
+    - name: 서비스 정상 동작 확인
+      ansible.builtin.command:
+        argv: '{{ service.check_argv }}'
+        chdir: '{{ service.path }}'
+      when: service.check_argv | default([]) | length > 0
+      register: service_check
+      changed_when: false
+      retries: 5
+      delay: 2
+      until: service_check.rc == 0
   rescue:
-  # 실행 로그에 표시할 작업 이름입니다.
-  - name: 공통 서비스 적용 실패로 중단
-    # 실패 이유를 알리고 현재 실행을 실패 처리합니다.
-    ansible.builtin.fail:
-      # 화면에 출력할 문자열입니다. {{ 변수 }} 부분은 실제 값으로 치환됩니다.
-      msg: '{{ service.name }} 적용 실패. 작업·백업 경로: {{ service_stage.stdout | default("생성 전") }}. 자동 원복·재기동하지 않았습니다.'
-    # true이면 입력값과 결과를 로그에서 숨깁니다. false인 안내 작업은 메시지를 보여줍니다.
-    no_log: false
-# 실행 로그에 표시할 작업 이름입니다.
-- name: 서비스 적용 결과
-  # 작업 결과나 경로를 화면에 출력합니다.
-  ansible.builtin.debug:
-    # 화면에 출력할 문자열입니다. {{ 변수 }} 부분은 실제 값으로 치환됩니다.
-    msg: '{{ service.name }} → {{ service.path }} 배치 완료. 작업·백업: {{ service_stage.stdout }}'
-# 시작 명령의 종료 코드와 실제 서비스 정상 동작은 구분하여 안내합니다.
-- name: 서비스 실행 및 검증 상태 안내
+    - name: 공통 서비스 반영 실패 안내
+      ansible.builtin.fail:
+        msg: '{{ service.name }} 반영 실패. 작업·백업 경로: {{ service_stage.path | default("생성 전") }}. 자동 원복·재기동하지 않았습니다.'
+- name: 서비스 반영 결과
   ansible.builtin.debug:
     msg: >-
-      {{ service.name }}:
+      {{ service.name }} → {{ service.path }} 배치 완료.
+      백업: {{ service_stage.path }}/previous.
       {{ '시작 명령 완료' if service.start_argv | default([]) | length > 0 else '파일 배치만 수행' }} /
-      {{ '검증 명령 통과' if service.check_argv | default([]) | length > 0 else '정상 동작 검증 미설정 — 직접 확인 필요' }}
+      {{ '검증 명령 통과' if service.check_argv | default([]) | length > 0 else '검증 명령 미설정' }}

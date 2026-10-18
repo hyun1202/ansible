@@ -3,15 +3,15 @@
 ---
 - name: '{{ restore_target }} 배치 여부 확인'
   ansible.builtin.command:
-    argv: '{{ sudo_root_argv + ["test", "-d", restore_target] }}'
+    argv: '{{ ["test", "-d", restore_target] }}'
   register: restore_current
   changed_when: false
   # test의 1은 디렉터리가 없다는 뜻이므로 복구를 계속합니다.
   failed_when: restore_current.rc not in [0, 1]
 - name: '{{ restore_target }} 실패한 파일 보관'
   ansible.builtin.command:
-    argv: '{{ sudo_root_argv + ["mv", restore_target, restore_stage + "/rejected"] }}'
+    argv: '{{ ["mv", restore_target, restore_stage + "/rejected"] }}'
   when: restore_current.rc == 0
 - name: '{{ restore_target }} 백업 복원'
   ansible.builtin.command:
-    argv: '{{ sudo_root_argv + ["mv", restore_stage + ".backup", restore_target] }}'
+    argv: '{{ ["mv", restore_stage + ".backup", restore_target] }}'

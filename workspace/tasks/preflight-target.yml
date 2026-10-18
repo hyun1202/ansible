@@ -63,7 +63,7 @@
     argv:
       - '{{ ansible_python_interpreter | default("/usr/bin/python3.9") }}'
       - -c
-      - 'import os,sys; p=sys.argv[1]; f=os.path.join(p,sys.argv[2]); sys.exit(0 if not os.path.exists(p) or (os.path.isfile(f) and os.access(f,os.X_OK)) else 1)'
+      - 'import os,sys; p=sys.argv[1]; f=os.path.join(p,sys.argv[2]); sys.exit(0 if not os.path.exists(p) or (os.path.isdir(p) and not os.listdir(p)) or (os.path.isfile(f) and os.access(f,os.X_OK)) else 1)'
       - '{{ item.path }}'
       - '{{ (item.stop_argv | default([]) | first) | default("") }}'
   loop: '{{ common_services }}'

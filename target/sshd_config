@@ -6,7 +6,11 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no
 UsePAM yes
-AllowUsers deploy
+AllowUsers deploy adminuser
 AuthorizedKeysFile .ssh/authorized_keys
 Subsystem sftp internal-sftp
 PrintMotd no
+
+# 실습용 개발자 계정입니다. 전송 계정의 비밀번호 로그인은 허용하지 않습니다.
+Match User adminuser
+    PasswordAuthentication yes
