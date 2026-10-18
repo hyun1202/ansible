@@ -57,6 +57,24 @@
               - /home/deploy/staging/nginx
               - "{{ nginx_stage.stdout }}/"
 
+        - name: 정적 파일을 위한 root 소유 작업 디렉터리 생성
+          ansible.builtin.command:
+            argv: [sudo, '-S', '-k', '-p', '', '--', mktemp, '-d', /usr/share/nginx/static-stage.XXXXXX]
+          register: static_stage
+
+        - name: 정적 파일 전체를 root 소유로 복사
+          ansible.builtin.command:
+            argv: [sudo, '-S', '-k', '-p', '', '--', cp, '-a', '--no-preserve=ownership', /home/deploy/staging/static, "{{ static_stage.stdout }}/html"]
+
+        - name: 기존 정적 파일 디렉터리 백업
+          ansible.builtin.command:
+            argv: [sudo, '-S', '-k', '-p', '', '--', mv, /usr/share/nginx/html, "{{ static_stage.stdout }}.backup"]
+          register: static_backup_move
+
+        - name: 복사한 정적 파일을 서비스 경로에 배치
+          ansible.builtin.command:
+            argv: [sudo, '-S', '-k', '-p', '', '--', mv, "{{ static_stage.stdout }}/html", /usr/share/nginx/html]
+
         - name: 기존 nginx 설정 디렉터리 백업
           ansible.builtin.command:
             argv: [sudo, '-S', '-k', '-p', '', '--', mv, /etc/nginx, "{{ nginx_stage.stdout }}.backup"]
@@ -76,6 +94,25 @@
             argv: [sudo, '-S', '-k', '-p', '', '--', nginx, '-s', reload]
 
       rescue:
+        - name: 정적 파일 백업 이후 실패한 경우 복구
+          when: static_backup_move is defined and static_backup_move is succeeded
+          block:
+            - name: 배치된 정적 파일 존재 여부 확인
+              ansible.builtin.command:
+                argv: [sudo, '-S', '-k', '-p', '', '--', test, '-d', /usr/share/nginx/html]
+              register: static_current
+              changed_when: false
+              failed_when: static_current.rc not in [0, 1]
+
+            - name: 실패한 정적 파일을 작업 디렉터리로 보관
+              ansible.builtin.command:
+                argv: [sudo, '-S', '-k', '-p', '', '--', mv, /usr/share/nginx/html, "{{ static_stage.stdout }}/rejected"]
+              when: static_current.rc == 0
+
+            - name: 정적 파일 백업 복원
+              ansible.builtin.command:
+                argv: [sudo, '-S', '-k', '-p', '', '--', mv, "{{ static_stage.stdout }}.backup", /usr/share/nginx/html]
+
         - name: 백업 이후 실패한 경우 기존 설정 복구
           when: nginx_backup_move is defined and nginx_backup_move is succeeded
           block:
@@ -111,8 +148,9 @@
 
     - name: nginx HTTP 응답 확인
       ansible.builtin.uri:
-        url: http://127.0.0.1/
+        url: "http://127.0.0.1{{ item }}"
         return_content: true
+      loop: [/, /static/app.css]
       register: nginx_response
       retries: 5
       delay: 1
@@ -121,5 +159,6 @@
     - name: 반영 결과 안내
       ansible.builtin.debug:
         msg:
-          - "{{ inventory_hostname }}: 설정 복사, nginx -t, reload, HTTP 200 확인 완료"
+          - "{{ inventory_hostname }}: 설정·정적 파일 복사, nginx -t, reload, HTML·CSS HTTP 200 확인 완료"
           - "기존 설정 백업: {{ nginx_stage.stdout }}.backup"
+          - "기존 정적 파일 백업: {{ static_stage.stdout }}.backup"

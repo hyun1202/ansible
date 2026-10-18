@@ -26,7 +26,7 @@ services:
       - ./.lab/ssh_host_ed25519_key:/run/lab/host_key:ro
       - ./.lab/adminuser_password:/run/lab/adminuser_password:ro
     healthcheck:
-      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
+      test: [CMD, python3.9, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -40,7 +40,7 @@ services:
       - ./.lab/ssh_host_target2_ed25519_key:/run/lab/host_key:ro
       - ./.lab/adminuser_password:/run/lab/adminuser_password:ro
     healthcheck:
-      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
+      test: [CMD, python3.9, -c, "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -55,7 +55,7 @@ services:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_source_ed25519_key:/run/lab/host_key:ro
     healthcheck:
-      test: [CMD, python3, -c, "import socket, urllib.request; socket.create_connection(('127.0.0.1', 22), 2).close(); urllib.request.urlopen('http://127.0.0.1', timeout=2).read()"]
+      test: [CMD, python3.9, -c, "import socket, urllib.request; socket.create_connection(('127.0.0.1', 22), 2).close(); urllib.request.urlopen('http://127.0.0.1', timeout=2).read()"]
       interval: 3s
       timeout: 5s
       retries: 10
