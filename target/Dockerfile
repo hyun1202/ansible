@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       openssh-server python3 sudo ca-certificates nginx rsync \
+       openssh-server python3 sudo ca-certificates nginx rsync acl \
     && useradd --create-home --shell /bin/bash deploy \
     && useradd --create-home --shell /bin/bash --groups sudo adminuser \
     && rm -f /etc/ssh/ssh_host_* /etc/nginx/sites-enabled/default \

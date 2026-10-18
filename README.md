@@ -50,7 +50,7 @@ docker-compose exec control ansible-playbook -i inventory-source.ini fetch-nginx
 
 예제 설정은 source의 `/etc/nginx/sites-available/legacy-app.conf`입니다. source에서 nginx를 실행하는 데 사용합니다. 로컬 `source/legacy-app.conf`는 컨테이너 초기 구성용이고, rsync는 실행 중인 source 내부의 파일을 읽습니다.
 
-이후 단계는 수집본 확인 → 신규 서버별 값 조정 → target/target2에 nginx 설치 및 설정 배치 → 설정 검사 및 실행입니다. 한 번 구축할 때는 같은 수집본으로 두 신규 서버를 구성합니다. 수집과 일반 계정 업로드는 플레이북으로 준비되어 있고, 최종 복사·검사·reload는 직접 실습합니다.
+이후 단계는 수집본 확인 → 신규 서버별 값 조정 → target/target2에 nginx 설치 및 설정 배치 → 설정 검사 및 실행입니다. 한 번 구축할 때는 같은 수집본으로 두 신규 서버를 구성합니다. 수집, 일반 계정 업로드, 관리자 전환 후 최종 반영은 각각 플레이북으로 실행합니다.
 
 ## 파일과 작업 위치
 
@@ -87,7 +87,23 @@ docker-compose start
 
 수집 폴더는 하나만 유지합니다. 완료 표시 갱신 작업은 매번 changed가 나올 수 있습니다. 업로드 플레이북은 같은 설정이 이미 타겟에 있으면 파일을 다시 변경하지 않습니다. 이전 방식의 `workspace/snapshots/`는 더 이상 사용하지 않습니다.
 
-## 직접 실습: 수집 → 업로드 → 계정 전환 → 복사 → 검사 → reload
+## 플레이북으로 최종 설정 반영
+
+업로드까지 완료했다면 다음 명령을 실행합니다.
+
+```sh
+/opt/homebrew/bin/docker-compose exec control ansible-playbook apply-nginx.yml
+```
+
+`su`로 전환할 계정명(기본값 adminuser), su 비밀번호, sudo 비밀번호를 차례로 입력합니다. 실습에서는 두 비밀번호가 `.lab/adminuser_password`의 값으로 같습니다. 비밀번호는 숨김 입력하며 Git이나 명령행 인자로 저장하지 않습니다.
+
+SSH는 deploy로 접속하고 Ansible의 become_method: su로 관리자 계정에 전환합니다. 그 계정에서 `sudo -S` 명령의 표준 입력으로 sudo 비밀번호를 전달합니다. 비밀번호를 처리하는 블록은 no_log로 출력하지 않습니다. 이는 become 방식 두 개를 연결하는 설정이 아니라, su 전환과 명시적인 sudo 명령을 나눠 처리하는 방식입니다. 일반 계정 간 Ansible 임시 파일 접근을 위해 타겟에는 acl 패키지가 필요하며 실습 환경에 설치되어 있습니다.
+
+각 타겟을 한 대씩 처리합니다: 업로드 확인 → root 소유 임시 디렉터리에 전체 cp → 기존 /etc/nginx 백업 → 새 설정 배치 → nginx -t → reload → HTTP 200 확인. 설정 반영 블록에서 백업 이후 실패하면 기존 설정을 복구하고 중단합니다. HTTP 응답 확인 실패는 별도로 중단하며 자동 복구 대상은 아닙니다. 비밀번호를 처리하는 명령의 상세 출력은 숨겨지므로 오류 시 서버에서 nginx -t와 권한을 직접 확인하세요.
+
+이 플레이북은 신규 구축용으로, 재실행하면 다시 복사하고 백업·reload합니다. 기존 백업과 진단용 작업 폴더는 자동 삭제하지 않습니다. 한 대만 먼저 실행하려면 `--limit target`을 붙입니다.
+
+## 참고: 같은 과정을 수동으로 실행하기
 
 타겟 두 대에는 nginx가 미리 설치·실행되어 있습니다. 초기 HTTP 응답은 `new target: before deployment`입니다. 이번 실습에서는 `/etc/nginx/` 디렉터리 전체를 수집·업로드·교체합니다. nginx.conf, sites-available, sites-enabled, conf.d, snippets 등을 포함하고 심볼릭 링크도 보존합니다. 이 경로 밖의 인증서·웹 콘텐츠·모듈 파일 등은 별도 준비가 필요하며 이 실습 설정은 해당 추가 파일을 요구하지 않습니다.
 
