@@ -7,24 +7,23 @@
   tasks:
     - name: control에 수집본 보관 디렉터리 준비
       ansible.builtin.file:
-        path: "{{ playbook_dir }}/snapshots"
+        path: "{{ playbook_dir }}/collected"
         state: directory
         mode: '0700'
       delegate_to: localhost
 
-    - name: 이번 구축에 사용할 별도 수집 디렉터리 생성
-      ansible.builtin.tempfile:
-        state: directory
-        path: "{{ playbook_dir }}/snapshots"
-        prefix: "nginx-{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}-"
-      register: snapshot
+    - name: 수집 중 실패하면 이전 완료 표시를 사용하지 않도록 제거
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/collected/.complete"
+        state: absent
       delegate_to: localhost
 
     - name: source의 nginx 설정을 rsync로 control에 가져오기
       ansible.posix.synchronize:
         mode: pull
         src: /etc/nginx/
-        dest: "{{ snapshot.path }}/nginx/"
+        dest: "{{ playbook_dir }}/collected/nginx/"
+        delete: true
         archive: true
         owner: false
         group: false
@@ -34,10 +33,10 @@
     - name: 수집 성공 표시
       ansible.builtin.copy:
         content: "source={{ inventory_hostname }}\n"
-        dest: "{{ snapshot.path }}/.complete"
+        dest: "{{ playbook_dir }}/collected/.complete"
         mode: '0600'
       delegate_to: localhost
 
     - name: 수집본 위치 안내
       ansible.builtin.debug:
-        msg: "수집 완료: {{ snapshot.path }}/nginx/"
+        msg: "수집 완료: {{ playbook_dir }}/collected/nginx/"

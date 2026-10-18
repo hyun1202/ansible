@@ -1,3 +1,4 @@
 .lab/
 workspace/*.retry
 workspace/snapshots/
+workspace/collected/

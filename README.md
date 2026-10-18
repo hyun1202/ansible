@@ -46,11 +46,11 @@ docker-compose exec control ansible lab -m ansible.builtin.ping
 docker-compose exec control ansible-playbook -i inventory-source.ini fetch-nginx.yml
 ```
 
-수집 결과는 Mac의 `workspace/snapshots/nginx-<UTC 시각>-<고유값>/nginx/`에 저장됩니다. 성공한 수집 폴더에는 `.complete` 파일이 생깁니다. 매번 새 폴더에 수집하므로 기존 수집본의 오래된 파일이 섞이지 않습니다. 심볼릭 링크를 보존하며 source의 설정은 변경하지 않습니다. 수집 중 원본 파일이 바뀌면 한 시점의 일관된 설정이 아닐 수 있으므로, 실제 구축에서는 설정 변경이 없는 시점에 수집합니다.
+수집 결과는 항상 Mac의 `workspace/collected/nginx/`에 저장됩니다. 수집 시작 시 기존 `.complete` 표시를 지우고, 성공했을 때만 다시 만듭니다. rsync의 `delete: true`는 원본에서 사라진 파일을 이 로컬 수집 폴더에서도 제거합니다. source 파일은 삭제하거나 변경하지 않으며 심볼릭 링크를 보존합니다. 수집과 업로드는 동시에 실행하지 말고 순서대로 진행합니다. 수집 중 원본 파일이 바뀌면 한 시점의 일관된 설정이 아닐 수 있으므로, 실제 구축에서는 설정 변경이 없는 시점에 수집합니다.
 
 예제 설정은 source의 `/etc/nginx/sites-available/legacy-app.conf`입니다. source에서 nginx를 실행하는 데 사용합니다. 로컬 `source/legacy-app.conf`는 컨테이너 초기 구성용이고, rsync는 실행 중인 source 내부의 파일을 읽습니다.
 
-이후 단계는 수집본 확인 → 신규 서버별 값 조정 → target/target2에 nginx 설치 및 설정 배치 → 설정 검사 및 실행입니다. 한 번 구축할 때는 같은 수집본으로 두 신규 서버를 구성합니다. 현재는 수집까지만 구현되어 있습니다.
+이후 단계는 수집본 확인 → 신규 서버별 값 조정 → target/target2에 nginx 설치 및 설정 배치 → 설정 검사 및 실행입니다. 한 번 구축할 때는 같은 수집본으로 두 신규 서버를 구성합니다. 수집과 일반 계정 업로드는 플레이북으로 준비되어 있고, 최종 복사·검사·reload는 직접 실습합니다.
 
 ## 파일과 작업 위치
 
@@ -85,7 +85,7 @@ docker-compose start
 
 파일·권한·계정·패키지·설정 템플릿·nginx 설정 검사 등을 실습합니다. 일반 컨테이너이므로 systemd, OS 재부팅, 부팅 시 서비스 자동 시작의 최종 검증은 실제 신규 Linux 서버에서 진행합니다. Apple Silicon에서는 ARM64로 실행되므로 이후 바이너리 설치 시 아키텍처를 확인합니다.
 
-수집 플레이북은 실행할 때마다 새 수집본을 만드므로 매번 `changed`가 발생합니다. 이후 신규 서버 구성 플레이북에서는 같은 수집본을 반복 적용해 멱등성을 확인합니다.
+수집 폴더는 하나만 유지합니다. 완료 표시 갱신 작업은 매번 changed가 나올 수 있습니다. 업로드 플레이북은 같은 설정이 이미 타겟에 있으면 파일을 다시 변경하지 않습니다. 이전 방식의 `workspace/snapshots/`는 더 이상 사용하지 않습니다.
 
 ## 직접 실습: 수집 → 업로드 → 계정 전환 → 복사 → 검사 → reload
 
@@ -106,7 +106,7 @@ cat .lab/adminuser_password
 /opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory-source.ini fetch-nginx.yml
 ```
 
-출력된 `/workspace/snapshots/nginx-.../nginx/` 경로에서 마지막 `nginx/`를 제외한 수집본 경로를 다음 단계에 입력합니다.
+항상 `/workspace/collected/nginx/`에 수집되므로 다음 단계에서 경로를 입력할 필요가 없습니다.
 
 ### 3. 타겟 두 대의 deploy 폴더에 업로드 (Mac)
 
@@ -114,7 +114,7 @@ cat .lab/adminuser_password
 /opt/homebrew/bin/docker-compose exec control ansible-playbook upload-nginx.yml
 ```
 
-수집본 경로를 입력하면 두 서버의 `/home/deploy/staging/legacy-app.conf`에 업로드합니다. sudo는 사용하지 않고, 실행 중인 nginx 설정도 아직 바뀌지 않습니다.
+공통 수집 폴더의 설정 한 벌을 두 서버의 `/home/deploy/staging/legacy-app.conf`에 업로드합니다. sudo는 사용하지 않고, 실행 중인 nginx 설정도 아직 바뀌지 않습니다.
 
 ### 4. target에 SSH 접속하고 계정 전환 (Mac에서 시작)
 
