@@ -1,33 +1,5 @@
 ---
-- name: 관리자 계정으로 서비스 반영
-  hosts: lab
-  gather_facts: false
-  any_errors_fatal: true
-  serial: 1
-  vars_prompt:
-  - name: admin_user
-    prompt: su로 전환할 계정명
-    default: adminuser
-    private: false
-  - name: admin_su_password
-    prompt: 전환할 계정의 su 비밀번호
-    private: true
-  - name: admin_sudo_password
-    prompt: 전환한 계정의 sudo 비밀번호 (실습에서는 su와 동일)
-    private: true
+- name: nginx 전용 apply 진입점
+  ansible.builtin.import_playbook: ../apply.yml
   vars:
-    workspace_root: "{{ playbook_dir | dirname }}"
-    ansible_become_password: '{{ admin_su_password }}'
-  vars_files:
-  - ../vars/environment.yml
-  - ../vars/services.yml
-  tasks:
-  - name: 선택한 role의 단계 실행
-    ansible.builtin.include_role:
-      name: '{{ service_role }}'
-    loop:
-    - nginx
-    loop_control:
-      loop_var: service_role
-    vars:
-      deployment_phase: apply
+    role_selection: [nginx]

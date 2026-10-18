@@ -1,21 +1,5 @@
 ---
-- name: 신규 서버에 업로드
-  hosts: lab
-  gather_facts: false
-  any_errors_fatal: true
-  become: false
+- name: nginx 전용 upload 진입점
+  ansible.builtin.import_playbook: ../upload.yml
   vars:
-    workspace_root: "{{ playbook_dir | dirname }}"
-  vars_files:
-  - ../vars/environment.yml
-  - ../vars/services.yml
-  tasks:
-  - name: 선택한 role의 단계 실행
-    ansible.builtin.include_role:
-      name: '{{ service_role }}'
-    loop:
-    - nginx
-    loop_control:
-      loop_var: service_role
-    vars:
-      deployment_phase: upload
+    role_selection: [nginx]

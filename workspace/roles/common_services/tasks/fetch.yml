@@ -1,7 +1,32 @@
 ---
-- name: 서비스별 fetch 처리
-  ansible.builtin.include_tasks: fetch_service.yml
-  loop: '{{ common_services }}'
-  loop_control:
-    loop_var: service
-    label: '{{ service.name }}'
+- name: 서비스 수집 폴더 준비
+  ansible.builtin.file:
+    path: '{{ collection_root }}/common_services/{{ service.name }}'
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+- name: 이전 수집 완료 표시 제거
+  ansible.builtin.file:
+    path: '{{ collection_root }}/common_services/{{ service.name }}/.complete'
+    state: absent
+  delegate_to: localhost
+- name: 서비스 디렉터리 수집
+  ansible.posix.synchronize:
+    mode: pull
+    src: '{{ service.source_path | default(service.path) }}/'
+    dest: '{{ collection_root }}/common_services/{{ service.name }}/files/'
+    archive: true
+    owner: false
+    group: false
+    delete: true
+    use_ssh_args: true
+    verify_host: true
+    rsync_opts: '{{ [''--delete-excluded''] + ([''--exclude=''] | product(service.excludes | default([])) | map(''join'') | list) }}'
+- name: 서비스 수집 완료 표시
+  ansible.builtin.copy:
+    content: '{{ inventory_hostname }}
+
+      '
+    dest: '{{ collection_root }}/common_services/{{ service.name }}/.complete'
+    mode: '0600'
+  delegate_to: localhost

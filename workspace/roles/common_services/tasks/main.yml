@@ -19,4 +19,7 @@
     label: '{{ service.name }}'
 - name: 공통 서비스 단계 선택
   ansible.builtin.include_tasks: '{{ deployment_phase }}.yml'
-  when: common_services | length > 0
+  loop: '{{ common_services }}'
+  loop_control:
+    loop_var: service
+    label: '{{ service.name }}'

@@ -107,13 +107,12 @@ workspace/
    │  └─ tasks/main.yml, fetch.yml, upload.yml, apply.yml
    └─ common_services/
       ├─ defaults/main.yml
-      └─ tasks/main.yml, fetch.yml, upload.yml, apply.yml,
-               fetch_service.yml, upload_service.yml, apply_service.yml
+      └─ tasks/main.yml, fetch.yml, upload.yml, apply.yml
 ```
 
 상위의 setup.yml, fetch.yml, upload.yml, apply.yml은 현재 사용하는 진입 플레이북입니다. 대상 서버와 단계, 비밀번호 입력을 담당하며 role이 실제 작업을 수행합니다.
 
-이전 nginx 전용 진입점 네 개는 `workspace/v1/`로 옮겼습니다. 과거 구현 전체의 복사본이 아니라 현재 nginx role을 참조하는 호환용 진입점이며 common_services는 실행하지 않습니다. role 검색 경로는 ansible.cfg에 지정했고, v1에서도 공통 vars와 기존 collected 폴더를 사용합니다.
+이전 nginx 전용 진입점 네 개는 `workspace/v1/`로 옮겼습니다. 과거 구현 전체의 복사본이 아니라 현재 상위 플레이북을 import하는 짧은 호환용 진입점입니다. role_selection을 nginx로 고정하므로 common_services는 실행하지 않습니다. role 검색 경로는 ansible.cfg에 지정했고, v1에서도 상위 플레이북 기준의 vars와 collected 폴더를 그대로 사용합니다.
 
 ```sh
 # 이전 nginx 전용 전체 실행
@@ -124,6 +123,8 @@ workspace/
 ```
 
 일반적으로는 상위 setup.yml 또는 fetch.yml/upload.yml/apply.yml을 사용하면 됩니다.
+
+common_services의 main.yml이 서비스 목록을 반복하면서 해당 단계 파일을 직접 호출합니다. 중간 호출 전용 파일 없이 main → fetch/upload/apply로 실행됩니다.
 
 ### 경로 변경: vars/environment.yml
 

@@ -1,28 +1,5 @@
 ---
-- name: 원본 파일 수집
-  hosts: config_sources
-  gather_facts: false
-  any_errors_fatal: true
-  become: false
+- name: nginx 전용 fetch 진입점
+  ansible.builtin.import_playbook: ../fetch.yml
   vars:
-    workspace_root: "{{ playbook_dir | dirname }}"
-  vars_files:
-  - ../vars/environment.yml
-  - ../vars/services.yml
-  pre_tasks:
-  - name: 공통 수집본의 원본 서버가 한 대인지 확인
-    ansible.builtin.assert:
-      that:
-      - groups.config_sources | length == 1
-      fail_msg: config_sources에는 기준 서버 한 대를 지정하세요.
-    run_once: true
-  tasks:
-  - name: 선택한 role의 단계 실행
-    ansible.builtin.include_role:
-      name: '{{ service_role }}'
-    loop:
-    - nginx
-    loop_control:
-      loop_var: service_role
-    vars:
-      deployment_phase: fetch
+    role_selection: [nginx]
