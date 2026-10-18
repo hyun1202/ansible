@@ -1,0 +1,24 @@
+---
+# 실제 경로·계정·실행 방법을 확인한 후 아래 목록에 추가합니다.
+# 비어 있으면 common_services role은 작업하지 않습니다.
+common_services: []
+
+# 예시입니다. 실제 운영 경로가 아닙니다.
+# common_services:
+#   - name: alloy
+#     path: /opt/alloy
+#     owner: alloy
+#     group: alloy
+#     excludes: ["logs/", "data/"]
+#     start_user: alloy
+#     start_argv: ["./start.sh"]
+#     check_argv: ["./check.sh"]
+#   - name: deploy
+#     path: /opt/deploy
+#     owner: deploy
+#     group: deploy
+#     excludes: []
+#     start_argv: []  # 복사만 수행
+#     check_argv: []
+# Loki, Scouter, node exporter도 같은 형식으로 추가합니다.
+# source_path를 따로 지정하지 않으면 원본도 path와 같은 경로를 사용합니다.

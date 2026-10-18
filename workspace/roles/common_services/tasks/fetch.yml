@@ -1,0 +1,7 @@
+---
+- name: 서비스별 fetch 처리
+  ansible.builtin.include_tasks: fetch_service.yml
+  loop: '{{ common_services }}'
+  loop_control:
+    loop_var: service
+    label: '{{ service.name }}'

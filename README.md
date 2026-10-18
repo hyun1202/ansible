@@ -53,7 +53,7 @@ cd /Users/hyun/Study/ansible
 ## 전체 실습을 한 번에 실행
 
 ```sh
-/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini setup-nginx.yml
+/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini setup.yml
 ```
 
 수집 → 업로드 → su 전환 → sudo로 설정·정적 파일 복사 및 교체 → nginx -t → reload → HTML·CSS HTTP 200 확인 순서입니다. 최종 반영 단계에서 관리자 계정명과 su 및 sudo 비밀번호를 입력합니다. 실습에서는 두 비밀번호가 같습니다.
@@ -62,16 +62,16 @@ cd /Users/hyun/Study/ansible
 
 ```sh
 # 1. 최신 nginx 설정과 정적 파일 수집
-/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory-source.ini fetch-nginx.yml
+/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory-source.ini fetch.yml
 
 # 2. 두 신규 서버의 deploy 폴더에 업로드
-/opt/homebrew/bin/docker-compose exec control ansible-playbook upload-nginx.yml
+/opt/homebrew/bin/docker-compose exec control ansible-playbook upload.yml
 
 # 3. 관리자 계정 전환 후 최종 반영
-/opt/homebrew/bin/docker-compose exec control ansible-playbook apply-nginx.yml
+/opt/homebrew/bin/docker-compose exec control ansible-playbook apply.yml
 ```
 
-완료한 단계를 건너뛰려면 필요한 플레이북만 실행합니다. `setup-nginx.yml`은 항상 수집부터 다시 실행합니다. `apply-nginx.yml --limit target`으로 한 대만 먼저 반영할 수도 있습니다.
+완료한 단계를 건너뛰려면 필요한 플레이북만 실행합니다. `setup.yml`은 항상 수집부터 다시 실행합니다. `apply.yml --limit target`으로 한 대만 먼저 반영할 수도 있습니다.
 
 수집 시작 시 `.complete` 표시를 지우고 설정과 정적 파일 모두 성공했을 때 다시 만듭니다. 업로드는 이 표시를 확인합니다. 수집·업로드·반영은 순서대로 실행하고 동시에 진행하지 않습니다.
 
@@ -91,17 +91,67 @@ python3.9 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.
 
 HTML에 `legacy nginx configuration v1`이 표시되고 CSS가 응답하면 정적 파일까지 반영된 것입니다. 두 번째 타겟은 `deploy@target2`로 접속합니다.
 
-## 파일 역할
+## role과 변수 구조
 
-- `workspace/inventory.ini`: 신규 타겟 두 대와 deploy 계정
-- `workspace/inventory-source.ini`: 수집용 source와 ansible 계정
-- `workspace/ansible.cfg`: SSH 및 inventory 기본값
-- `workspace/setup-nginx.yml`: 전체 실행 진입점
-- `workspace/fetch-nginx.yml`: 설정·정적 파일 수집
-- `workspace/upload-nginx.yml`: 일반 계정 업로드
-- `workspace/apply-nginx.yml`: 관리자 전환 후 최종 반영
-- `target/nginx.conf`: Rocky 실습용 nginx 설정
-- `source/html/`: 원본 서버의 예제 HTML·CSS
+```text
+workspace/
+├─ setup.yml                    # 전체 실행
+├─ fetch.yml / upload.yml / apply.yml
+├─ vars/
+│  ├─ environment.yml           # role 선택, 공통 경로, nginx 경로·검증 주소
+│  └─ services.yml              # Loki·Alloy·Scouter·node exporter·deploy 목록
+└─ roles/
+   ├─ nginx/
+   │  ├─ defaults/main.yml
+   │  └─ tasks/main.yml, fetch.yml, upload.yml, apply.yml
+   └─ common_services/
+      ├─ defaults/main.yml
+      └─ tasks/main.yml, fetch.yml, upload.yml, apply.yml,
+               fetch_service.yml, upload_service.yml, apply_service.yml
+```
+
+상위 플레이북은 대상 서버와 단계, 비밀번호 입력을 담당합니다. role은 실제 작업을 담당합니다. nginx 전용 기존 명령인 setup-nginx.yml, fetch-nginx.yml, upload-nginx.yml, apply-nginx.yml도 호환용으로 유지하며 common_services는 실행하지 않습니다.
+
+### 경로 변경: vars/environment.yml
+
+- `collection_root`: control에 보관하는 공통 수집 폴더
+- `staging_root`: 신규 서버 SSH 계정이 쓰는 업로드 폴더
+- `nginx_config_dir`, `nginx_static_dir`: 신규 서버 최종 경로
+- `nginx_source_config_dir`, `nginx_source_static_dir`: 원본 경로, 기본값은 신규 서버와 동일
+- `nginx_binary`: nginx 실행 파일 경로
+- `nginx_check_base_url`, `nginx_check_paths`: HTTP 확인 주소와 경로
+- `enabled_roles`: 실행할 role 목록. 기본값은 nginx와 common_services
+
+nginx 경로를 바꾸면 nginx.conf 안의 include/root/pid 경로 및 nginx 실행 설정도 일치해야 합니다. 수집한 설정 파일 내용은 자동 치환하지 않습니다. SSH 계정·주소·Python 경로는 inventory에서 관리합니다.
+
+### 서비스 추가: vars/services.yml
+
+실제 서비스 경로와 실행 명령을 아직 전달받지 않아 `common_services: []`로 비워 두었습니다. 이 상태에서는 nginx만 작업하고 공통 서비스는 건너뜁니다. 파일 안의 주석 예시를 실제 값으로 채우세요. 아래는 설명용 예시이며 실제 운영 경로가 아닙니다.
+
+```yaml
+common_services:
+  - name: alloy
+    path: /opt/alloy
+    owner: alloy
+    group: alloy
+    excludes: ["logs/", "data/"]
+    start_user: alloy
+    start_argv: ["./start.sh"]
+    check_argv: ["./check.sh"]
+  - name: deploy
+    path: /opt/deploy
+    owner: deploy
+    group: deploy
+    start_argv: []
+```
+
+`path`를 원본·대상에 동일하게 사용하며 필요한 경우 `source_path`로 원본만 바꿀 수 있습니다. 서비스별 수집본은 `collected/common_services/<name>/files/`, 업로드는 `<staging_root>/common_services/<name>/files/`에 보관합니다. 제외 패턴은 원본 디렉터리 기준입니다. 수집 폴더마다 완료 표시를 확인합니다.
+
+복사할 때 실행 권한과 심볼릭 링크를 보존하고 소유권을 owner/group으로 맞춥니다. 해당 사용자·그룹은 대상에 미리 있어야 합니다. 실행·검증 명령은 문자열 하나가 아니라 인자 목록이며, 서비스 폴더에서 start_user(생략 시 owner) 계정으로 실행됩니다. 시작 스크립트는 서비스를 기동한 후 종료되어야 합니다. start_argv가 비어 있으면 복사만 하며 deploy 스크립트를 자동 실행하지 않습니다. check_argv는 선택 사항으로, 정상일 때 종료 코드 0을 반환하는 명령을 지정합니다.
+
+공통 서비스는 기존 폴더를 백업한 뒤 파일을 덮어씁니다. 대상에서 파일을 삭제하지 않으므로 제외된 기존 로그·데이터를 유지하지만, 원본에서 사라진 일반 파일도 대상에 남을 수 있습니다. 신규 구축을 기준으로 합니다. 기존 폴더의 전체 백업에는 데이터도 포함되므로 기존 운영 서버 갱신용으로 무심코 실행하지 마세요. 서비스별 중지·복구 명령을 아직 모르므로 공통 서비스 실패 시 자동 중지·원복하지 않고 백업 위치를 알립니다. nginx는 기존 검사·원복 동작을 유지합니다.
+
+일반 파일의 위치만 바뀌면 변수 파일만 수정하면 됩니다. Loki와 Alloy, Scouter, node exporter는 각 서비스마다 role이나 fetch 파일을 추가하지 않고 목록에 항목을 추가합니다.
 
 ## 중지와 실습 범위
 

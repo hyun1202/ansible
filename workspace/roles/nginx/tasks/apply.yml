@@ -1,0 +1,108 @@
+---
+- name: su 전환 후 sudo로 복사 및 반영
+  become: true
+  become_method: su
+  become_user: '{{ admin_user }}'
+  no_log: true
+  module_defaults:
+    ansible.builtin.command:
+      stdin: '{{ admin_sudo_password }}'
+  block:
+  - name: 업로드된 nginx.conf 확인
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, test, -f, '{{ staging_root }}/nginx/nginx.conf']
+    changed_when: false
+  - name: root 소유의 작업 디렉터리 생성
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, mktemp, -d, '{{ nginx_config_dir | dirname }}/nginx-stage.XXXXXX']
+    register: nginx_stage
+  - name: nginx 전체 디렉터리를 root 소유로 복사
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, cp, -a, --no-preserve=ownership, '{{ staging_root }}/nginx', '{{ nginx_stage.stdout }}/']
+  - name: 정적 파일을 위한 root 소유 작업 디렉터리 생성
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, mktemp, -d, '{{ nginx_static_dir | dirname }}/static-stage.XXXXXX']
+    register: static_stage
+  - name: 정적 파일 전체를 root 소유로 복사
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, cp, -a, --no-preserve=ownership, '{{ staging_root }}/static', '{{ static_stage.stdout }}/html']
+  - name: 기존 정적 파일 디렉터리 백업
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, mv, '{{ nginx_static_dir }}', '{{ static_stage.stdout }}.backup']
+    register: static_backup_move
+  - name: 복사한 정적 파일을 서비스 경로에 배치
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, mv, '{{ static_stage.stdout }}/html', '{{ nginx_static_dir }}']
+  - name: 기존 nginx 설정 디렉터리 백업
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, mv, '{{ nginx_config_dir }}', '{{ nginx_stage.stdout }}.backup']
+    register: nginx_backup_move
+  - name: 복사한 설정을 {{ nginx_config_dir }}에 배치
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, mv, '{{ nginx_stage.stdout }}/nginx', '{{ nginx_config_dir }}']
+  - name: nginx 설정 검사
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, '{{ nginx_binary }}', -t]
+    changed_when: false
+  - name: 검사에 성공한 설정 reload
+    ansible.builtin.command:
+      argv: [sudo, -S, -k, -p, '', --, '{{ nginx_binary }}', -s, reload]
+  rescue:
+  - name: 정적 파일 백업 이후 실패한 경우 복구
+    when: static_backup_move is defined and static_backup_move is succeeded
+    block:
+    - name: 배치된 정적 파일 존재 여부 확인
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, test, -d, '{{ nginx_static_dir }}']
+      register: static_current
+      changed_when: false
+      failed_when: static_current.rc not in [0, 1]
+    - name: 실패한 정적 파일을 작업 디렉터리로 보관
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, mv, '{{ nginx_static_dir }}', '{{ static_stage.stdout }}/rejected']
+      when: static_current.rc == 0
+    - name: 정적 파일 백업 복원
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, mv, '{{ static_stage.stdout }}.backup', '{{ nginx_static_dir }}']
+  - name: 백업 이후 실패한 경우 기존 설정 복구
+    when: nginx_backup_move is defined and nginx_backup_move is succeeded
+    block:
+    - name: 배치된 설정 존재 여부 확인
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, test, -d, '{{ nginx_config_dir }}']
+      register: nginx_current
+      changed_when: false
+      failed_when: nginx_current.rc not in [0, 1]
+    - name: 실패한 설정을 작업 디렉터리로 보관
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, mv, '{{ nginx_config_dir }}', '{{ nginx_stage.stdout }}/rejected']
+      when: nginx_current.rc == 0
+    - name: 백업 설정 복원
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, mv, '{{ nginx_stage.stdout }}.backup', '{{ nginx_config_dir }}']
+    - name: 복원한 설정 검사
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, '{{ nginx_binary }}', -t]
+      changed_when: false
+    - name: 복원한 설정 reload
+      ansible.builtin.command:
+        argv: [sudo, -S, -k, -p, '', --, '{{ nginx_binary }}', -s, reload]
+  - name: 반영 실패로 중단
+    ansible.builtin.fail:
+      msg: 설정 반영에 실패했습니다. 관리자 권한 및 nginx 설정을 확인하세요.
+    no_log: false
+- name: nginx HTTP 응답 확인
+  ansible.builtin.uri:
+    url: '{{ nginx_check_base_url }}{{ item }}'
+    return_content: true
+  loop: '{{ nginx_check_paths }}'
+  register: nginx_response
+  retries: 5
+  delay: 1
+  until: nginx_response.status | default(0) == 200
+- name: 반영 결과 안내
+  ansible.builtin.debug:
+    msg:
+    - '{{ inventory_hostname }}: 설정·정적 파일 복사, nginx -t, reload, HTML·CSS HTTP 200 확인 완료'
+    - '기존 설정 백업: {{ nginx_stage.stdout }}.backup'
+    - '기존 정적 파일 백업: {{ static_stage.stdout }}.backup'

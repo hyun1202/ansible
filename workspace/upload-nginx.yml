@@ -1,40 +1,19 @@
 ---
-- name: 일반 계정으로 신규 서버에 nginx 설정 업로드
+- name: 신규 서버에 업로드
   hosts: lab
   gather_facts: false
-  become: false
   any_errors_fatal: true
-
-  pre_tasks:
-    - name: 성공한 수집본인지 확인
-      ansible.builtin.stat:
-        path: "{{ playbook_dir }}/collected/.complete"
-      delegate_to: localhost
-      run_once: true
-      register: collection_complete
-
-    - name: 수집 완료 표시가 없으면 중단
-      ansible.builtin.assert:
-        that: collection_complete.stat.exists
-        fail_msg: "먼저 fetch-nginx.yml을 실행하여 수집을 완료하세요."
-      run_once: true
-
+  become: false
+  vars_files:
+  - vars/environment.yml
+  - vars/services.yml
   tasks:
-    - name: deploy 전용 업로드 폴더 준비
-      ansible.builtin.file:
-        path: /home/deploy/staging
-        state: directory
-        mode: '0700'
-
-    - name: nginx 설정과 정적 파일 전체를 임시 폴더에 업로드
-      ansible.posix.synchronize:
-        mode: push
-        src: "{{ playbook_dir }}/collected/{{ item }}/"
-        dest: "/home/deploy/staging/{{ item }}/"
-        archive: true
-        owner: false
-        group: false
-        delete: true
-        use_ssh_args: true
-        verify_host: true
-      loop: [nginx, static]
+  - name: 선택한 role의 단계 실행
+    ansible.builtin.include_role:
+      name: '{{ service_role }}'
+    loop:
+    - nginx
+    loop_control:
+      loop_var: service_role
+    vars:
+      deployment_phase: upload

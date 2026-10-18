@@ -1,0 +1,3 @@
+---
+- name: nginx 단계 선택
+  ansible.builtin.include_tasks: '{{ deployment_phase }}.yml'

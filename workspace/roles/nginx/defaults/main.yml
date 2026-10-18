@@ -1,0 +1,10 @@
+---
+nginx_config_dir: /etc/nginx
+nginx_static_dir: /usr/share/nginx/html
+nginx_source_config_dir: '{{ nginx_config_dir }}'
+nginx_source_static_dir: '{{ nginx_static_dir }}'
+nginx_binary: /usr/sbin/nginx
+nginx_check_base_url: http://127.0.0.1
+nginx_check_paths:
+- /
+- /static/app.css

@@ -1,0 +1,22 @@
+---
+- name: 서비스 이름 중복 확인
+  ansible.builtin.assert:
+    that:
+    - common_services | map(attribute="name") | list | unique | length == common_services | length
+- name: 서비스 경로와 계정 확인
+  ansible.builtin.assert:
+    that:
+    - service.name is match('^[a-zA-Z0-9_-]+$')
+    - service.path is match('^/')
+    - service.path != '/'
+    - '''/../'' not in service.path'
+    - service.owner | length > 0
+    - service.group | length > 0
+    fail_msg: 서비스 name, 절대 path, owner, group을 확인하세요.
+  loop: '{{ common_services }}'
+  loop_control:
+    loop_var: service
+    label: '{{ service.name }}'
+- name: 공통 서비스 단계 선택
+  ansible.builtin.include_tasks: '{{ deployment_phase }}.yml'
+  when: common_services | length > 0

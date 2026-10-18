@@ -1,0 +1,16 @@
+---
+# 실행할 role. 하나만 실행하려면 목록에서 다른 항목을 빼세요.
+enabled_roles: [nginx, common_services]
+
+# control과 신규 서버에서 사용하는 공통 경로
+collection_root: "{{ playbook_dir }}/collected"
+staging_root: /home/deploy/staging
+
+# nginx 원본·대상 경로 (같으면 source 변수는 아래 값을 그대로 참조)
+nginx_config_dir: /etc/nginx
+nginx_static_dir: /usr/share/nginx/html
+nginx_source_config_dir: "{{ nginx_config_dir }}"
+nginx_source_static_dir: "{{ nginx_static_dir }}"
+nginx_binary: /usr/sbin/nginx
+nginx_check_base_url: http://127.0.0.1
+nginx_check_paths: [/, /static/app.css]

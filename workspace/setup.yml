@@ -1,0 +1,7 @@
+---
+- name: fetch
+  ansible.builtin.import_playbook: fetch.yml
+- name: upload
+  ansible.builtin.import_playbook: upload.yml
+- name: apply
+  ansible.builtin.import_playbook: apply.yml
