@@ -89,7 +89,7 @@ docker-compose start
 
 ## 직접 실습: 수집 → 업로드 → 계정 전환 → 복사 → 검사 → reload
 
-타겟 두 대에는 nginx가 미리 설치·실행되어 있습니다. 초기 HTTP 응답은 `new target: before deployment`입니다. 이번 실습에서는 전체 nginx 디렉터리를 수집한 다음 예제 사이트 설정 `sites-available/legacy-app.conf` 한 파일을 적용합니다. nginx.conf 전체 교체 실습은 아닙니다.
+타겟 두 대에는 nginx가 미리 설치·실행되어 있습니다. 초기 HTTP 응답은 `new target: before deployment`입니다. 이번 실습에서는 `/etc/nginx/` 디렉터리 전체를 수집·업로드·교체합니다. nginx.conf, sites-available, sites-enabled, conf.d, snippets 등을 포함하고 심볼릭 링크도 보존합니다. 이 경로 밖의 인증서·웹 콘텐츠·모듈 파일 등은 별도 준비가 필요하며 이 실습 설정은 해당 추가 파일을 요구하지 않습니다.
 
 ### 1. 실습용 관리자 비밀번호 확인 (Mac)
 
@@ -114,7 +114,7 @@ cat .lab/adminuser_password
 /opt/homebrew/bin/docker-compose exec control ansible-playbook upload-nginx.yml
 ```
 
-공통 수집 폴더의 설정 한 벌을 두 서버의 `/home/deploy/staging/legacy-app.conf`에 업로드합니다. sudo는 사용하지 않고, 실행 중인 nginx 설정도 아직 바뀌지 않습니다.
+공통 수집 폴더의 nginx 디렉터리 전체를 rsync로 두 서버의 `/home/deploy/staging/nginx/`에 업로드합니다. 원본 수집본에 없는 파일은 이 임시 nginx 폴더에서도 제거합니다. sudo는 사용하지 않고, 실행 중인 `/etc/nginx/` 설정도 아직 바뀌지 않습니다. 업로드가 성공한 뒤 최종 복사를 진행하며, 복사 중에는 업로드를 다시 실행하지 않습니다.
 
 ### 4. target에 SSH 접속하고 계정 전환 (Mac에서 시작)
 
@@ -126,21 +126,31 @@ cat .lab/adminuser_password
 
 ```sh
 whoami
-cat /home/deploy/staging/legacy-app.conf
+ls -la /home/deploy/staging/nginx/
+cat /home/deploy/staging/nginx/nginx.conf
 su - adminuser
 whoami
 ```
 
 `su` 비밀번호에는 앞서 확인한 실습용 관리자 비밀번호를 입력합니다. 입력 중 문자가 표시되지 않는 것이 정상입니다.
 
-### 5. 기존 파일 백업 후 sudo로 복사 (target의 adminuser)
+### 5. 디렉터리 전체를 sudo로 복사하고 기존 설정 교체 (target의 adminuser)
 
 ```sh
-sudo cp -a /etc/nginx/sites-available/legacy-app.conf /etc/nginx/sites-available/legacy-app.conf.bak
-sudo cp /home/deploy/staging/legacy-app.conf /etc/nginx/sites-available/legacy-app.conf
+nginx_stage=$(sudo mktemp -d /etc/nginx-stage.XXXXXX)
+sudo cp -a --no-preserve=ownership /home/deploy/staging/nginx "$nginx_stage/"
 ```
 
-sudo가 비밀번호를 물으면 같은 adminuser 비밀번호를 입력합니다. `/etc/nginx/sites-enabled/legacy-app.conf`는 이 파일을 가리키는 링크로 미리 준비되어 있습니다. 백업은 이번 적용 전 한 번 만들고, 실패한 설정으로 덮어쓰지 않습니다.
+위 복사가 성공한 것을 확인한 뒤 아래 명령을 한 줄씩 실행합니다. 실패하면 다음 단계로 넘어가지 않습니다.
+
+```sh
+nginx_backup="${nginx_stage}.backup"
+sudo mv /etc/nginx "$nginx_backup"
+sudo mv "$nginx_stage/nginx" /etc/nginx
+sudo rmdir "$nginx_stage"
+```
+
+sudo가 비밀번호를 물으면 같은 adminuser 비밀번호를 입력합니다. `cp -a`는 디렉터리와 링크를 보존하고, `--no-preserve=ownership`은 deploy의 소유권을 넘기지 않아 새 파일이 root 소유로 생성되게 합니다. 기존 디렉터리를 백업 위치로 이동한 뒤 새 디렉터리를 배치하므로 예전 설정 파일이 섞이지 않습니다. 같은 셸에서 `nginx_backup` 값을 유지한 채 검사와 복구를 진행하세요. 교체 후에도 nginx는 reload 전까지 메모리에 읽어 둔 기존 설정으로 실행됩니다.
 
 ### 6. 설정 검사에 성공한 경우에만 reload (target의 adminuser)
 
@@ -152,7 +162,8 @@ python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.
 응답이 `legacy nginx configuration v1`이면 원본 서버에서 수집한 설정이 반영된 것입니다. 검사에 실패하면 reload하지 말고 오류를 수정하거나 아래처럼 복원합니다.
 
 ```sh
-sudo cp -a /etc/nginx/sites-available/legacy-app.conf.bak /etc/nginx/sites-available/legacy-app.conf
+sudo mv /etc/nginx "${nginx_backup}.failed"
+sudo mv "$nginx_backup" /etc/nginx
 sudo nginx -t
 ```
 
