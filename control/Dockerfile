@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       python3 python3-venv openssh-client ca-certificates \
+       python3 python3-venv openssh-client ca-certificates rsync \
     && python3 -m venv /opt/ansible \
     && /opt/ansible/bin/pip install --no-cache-dir ansible-core==2.19.14 \
     && rm -rf /var/lib/apt/lists/*
