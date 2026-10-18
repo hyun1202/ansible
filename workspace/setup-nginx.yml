@@ -1,0 +1,10 @@
+---
+# 실행 시 inventory.ini와 inventory-source.ini를 함께 지정합니다.
+- name: 운영 서버에서 최신 nginx 설정 수집
+  ansible.builtin.import_playbook: fetch-nginx.yml
+
+- name: 신규 서버에 nginx 설정 전체 업로드
+  ansible.builtin.import_playbook: upload-nginx.yml
+
+- name: 관리자 계정으로 전환하여 설정 검사 및 반영
+  ansible.builtin.import_playbook: apply-nginx.yml

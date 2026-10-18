@@ -3,6 +3,7 @@
   hosts: lab
   gather_facts: false
   become: false
+  any_errors_fatal: true
 
   pre_tasks:
     - name: 성공한 수집본인지 확인

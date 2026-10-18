@@ -87,6 +87,18 @@ docker-compose start
 
 수집 폴더는 하나만 유지합니다. 완료 표시 갱신 작업은 매번 changed가 나올 수 있습니다. 업로드 플레이북은 같은 설정이 이미 타겟에 있으면 파일을 다시 변경하지 않습니다. 이전 방식의 `workspace/snapshots/`는 더 이상 사용하지 않습니다.
 
+## 전체 과정을 한 번에 실행
+
+실습 타겟에는 nginx 설치가 완료되어 있습니다. 수집 → 업로드 → 관리자 계정 전환 → 전체 설정 복사 및 교체 → nginx -t → reload → HTTP 확인을 한 명령으로 실행하려면 다음 명령을 사용합니다.
+
+```sh
+/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini setup-nginx.yml
+```
+
+두 inventory를 함께 읽지만 수집은 config_sources(source), 업로드와 반영은 lab(target, target2)에만 수행합니다. setup-nginx.yml은 세 플레이북을 순서대로 불러옵니다. 각 단계가 실패하면 후속 진행을 중단하며, 관리자 계정명과 비밀번호는 최종 반영 단계에 들어갈 때 입력합니다. 여러 서버에 걸친 일괄 원복은 하지 않으므로 이미 성공한 서버의 반영은 유지됩니다.
+
+단계별 플레이북도 계속 개별 실행할 수 있습니다. 이미 업로드까지 마쳤다면 apply-nginx.yml만 실행해도 됩니다. 전체 실행은 최신 설정 수집부터 다시 시작합니다.
+
 ## 플레이북으로 최종 설정 반영
 
 업로드까지 완료했다면 다음 명령을 실행합니다.

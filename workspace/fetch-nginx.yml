@@ -3,6 +3,7 @@
   hosts: config_sources
   gather_facts: false
   become: false
+  any_errors_fatal: true
 
   tasks:
     - name: control에 수집본 보관 디렉터리 준비
