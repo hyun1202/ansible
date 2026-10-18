@@ -1,0 +1,46 @@
+# root 전용 개인키를 읽되 원본 파일의 소유권·권한은 바꾸지 않습니다.
+---
+- name: 원본 수집용 SSH 계정 확인
+  ansible.builtin.command:
+    argv: [id, -un]
+  register: source_reader
+  changed_when: false
+- name: 원본 수집용 SSH 그룹 확인
+  ansible.builtin.command:
+    argv: [id, -gn]
+  register: source_reader_group
+  changed_when: false
+- name: 원본 관리자 계정으로 수집 사본 준비
+  become: true
+  become_method: su
+  become_user: '{{ source_admin_user }}'
+  vars:
+    ansible_become_password: '{{ source_admin_su_password }}'
+  no_log: true
+  module_defaults:
+    ansible.builtin.command:
+      stdin: '{{ source_admin_sudo_password }}'
+  block:
+    - name: 원본 경로 확인
+      ansible.builtin.command:
+        argv: '{{ sudo_root_argv + ["test", "-d", item] }}'
+      loop: '{{ [nginx_source_config_dir, nginx_source_static_dir] }}'
+      changed_when: false
+    - name: 원본에서 root 전용 임시 폴더 생성
+      ansible.builtin.command:
+        argv: '{{ sudo_root_argv + ["mktemp", "-d", "/var/tmp/ansible-nginx.XXXXXX"] }}'
+      register: source_export
+    - name: 설정과 정적 파일의 수집용 사본 생성
+      ansible.builtin.command:
+        # cp -a는 파일 권한과 링크를 보존합니다. 원본의 권한은 변경하지 않습니다.
+        argv: '{{ sudo_root_argv + ["cp", "-a", "--no-preserve=ownership", item.src, source_export.stdout + "/" + item.name] }}'
+      loop:
+        - {name: nginx, src: '{{ nginx_source_config_dir }}'}
+        - {name: static, src: '{{ nginx_source_static_dir }}'}
+    - name: 사본의 소유자만 SSH 수집 계정으로 변경
+      ansible.builtin.command:
+        # -h는 심볼릭 링크의 원본 대상 소유권을 변경하지 않도록 합니다.
+        argv: '{{ sudo_root_argv + ["chown", "-hR", source_reader.stdout + ":" + source_reader_group.stdout, source_export.stdout] }}'
+    - name: 임시 폴더를 수집 계정 전용으로 유지
+      ansible.builtin.command:
+        argv: '{{ sudo_root_argv + ["chmod", "0700", source_export.stdout] }}'

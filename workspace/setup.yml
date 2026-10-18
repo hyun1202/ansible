@@ -1,5 +1,23 @@
 # 전체 실행 진입점입니다. 사전 검사 → 설치 → 수집 → 업로드 → 반영 순서로 플레이북을 실행합니다.
 ---
+# 전체 실행 시작 시 원본·대상 정보를 각각 한 번만 받습니다. 실제 서버 작업은 하지 않습니다.
+- name: 구축에 필요한 인증 정보 입력
+  hosts: config_sources:lab
+  gather_facts: false
+  any_errors_fatal: true
+  vars_files: [vars/environment.yml]
+  tasks:
+    - name: 원본 관리자 정보 입력
+      ansible.builtin.include_tasks: tasks/read-credentials.yml
+      vars:
+        credential_scope: source
+      run_once: true
+      when: '"nginx" in enabled_roles and nginx_source_use_sudo | bool'
+    - name: 대상 관리자 정보 입력
+      ansible.builtin.include_tasks: tasks/read-credentials.yml
+      vars:
+        credential_scope: target
+      run_once: true
 # 모든 원본과 대상이 준비되었는지 변경 전에 검사합니다.
 - name: preflight
   ansible.builtin.import_playbook: preflight.yml

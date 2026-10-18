@@ -1,6 +1,9 @@
 FROM rockylinux/rockylinux:8
-RUN dnf install -y openssh-server python39 rsync nginx ca-certificates shadow-utils \
+RUN dnf install -y openssh-server python39 rsync nginx ca-certificates shadow-utils sudo acl passwd util-linux \
     && useradd --create-home --shell /bin/bash ansible \
+    && useradd --create-home --shell /bin/bash --groups wheel adminuser \
+    && printf '%s\n' '%wheel ALL=(ALL) ALL' > /etc/sudoers.d/lab-admin \
+    && chmod 440 /etc/sudoers.d/lab-admin \
     && rm -f /etc/ssh/ssh_host_* \
     && dnf clean all
 COPY source/sshd_config /etc/ssh/sshd_config

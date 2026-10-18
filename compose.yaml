@@ -89,6 +89,8 @@ services:
     volumes:
       - ./.lab/id_ed25519.pub:/run/lab/authorized_keys:ro
       - ./.lab/ssh_host_source_ed25519_key:/run/lab/host_key:ro
+      # 원본 관리자 계정의 실습용 비밀번호입니다. 실제 비밀번호는 Git에 저장하지 않습니다.
+      - ./.lab/adminuser_password:/run/lab/adminuser_password:ro
     # 컨테이너가 준비됐는지 주기적으로 확인합니다.
     healthcheck:
       # SSH 포트 연결을 검사합니다. source는 HTTP 응답도 함께 확인합니다.

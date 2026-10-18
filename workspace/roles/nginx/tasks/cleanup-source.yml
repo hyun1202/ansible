@@ -1,0 +1,13 @@
+# 수집 성공/실패 후 인증서 사본을 원본 서버에 남기지 않습니다.
+---
+- name: 원본 서버의 이번 수집용 임시 사본 제거
+  become: true
+  become_method: su
+  become_user: '{{ source_admin_user }}'
+  vars:
+    ansible_become_password: '{{ source_admin_su_password }}'
+  ansible.builtin.command:
+    # mktemp가 이번 실행에서 반환한 경로만 삭제합니다.
+    argv: '{{ sudo_root_argv + ["rm", "-rf", "--", source_export.stdout] }}'
+    stdin: '{{ source_admin_sudo_password }}'
+  no_log: true

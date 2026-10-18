@@ -22,50 +22,67 @@
     state: absent
   # 이 작업만 대상 서버 대신 control(localhost)에서 실행합니다.
   delegate_to: localhost
-# 실행 로그에 표시할 작업 이름입니다.
-- name: source의 nginx 설정을 rsync로 control에 가져오기
-  # rsync로 디렉터리를 동기화합니다. pull은 수집, push는 업로드입니다.
-  ansible.posix.synchronize:
-    # 원본 서버에서 control로 가져옵니다.
-    mode: pull
-    # 전송할 원본 경로입니다. 끝의 /는 폴더 자체가 아닌 내부 내용을 전송한다는 뜻입니다.
-    src: '{{ nginx_source_config_dir }}/'
-    # 전송 결과 또는 생성 파일을 저장할 목적지 경로입니다.
-    dest: '{{ collection_root }}/nginx/'
-    # 전송 원본에 없는 항목을 전송 목적지에서 삭제합니다. 수집본 또는 staging 범위에 적용됩니다.
-    delete: true
-    # rsync archive 모드로 재귀 복사하며 권한·시간·심볼릭 링크 등을 보존합니다.
-    archive: true
-    # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
-    owner: false
-    # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
-    group: false
-    # Ansible에 설정된 SSH 연결 옵션을 rsync에도 전달합니다.
-    use_ssh_args: true
-    # SSH known_hosts를 이용해 접속 서버의 호스트 키를 확인합니다.
-    verify_host: true
-# 실행 로그에 표시할 작업 이름입니다.
-- name: source의 정적 파일 전체를 rsync로 control에 가져오기
-  # rsync로 디렉터리를 동기화합니다. pull은 수집, push는 업로드입니다.
-  ansible.posix.synchronize:
-    # 원본 서버에서 control로 가져옵니다.
-    mode: pull
-    # 전송할 원본 경로입니다. 끝의 /는 폴더 자체가 아닌 내부 내용을 전송한다는 뜻입니다.
-    src: '{{ nginx_source_static_dir }}/'
-    # 전송 결과 또는 생성 파일을 저장할 목적지 경로입니다.
-    dest: '{{ collection_root }}/static/'
-    # 전송 원본에 없는 항목을 전송 목적지에서 삭제합니다. 수집본 또는 staging 범위에 적용됩니다.
-    delete: true
-    # rsync archive 모드로 재귀 복사하며 권한·시간·심볼릭 링크 등을 보존합니다.
-    archive: true
-    # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
-    owner: false
-    # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
-    group: false
-    # Ansible에 설정된 SSH 연결 옵션을 rsync에도 전달합니다.
-    use_ssh_args: true
-    # SSH known_hosts를 이용해 접속 서버의 호스트 키를 확인합니다.
-    verify_host: true
+# 같은 실행에서 앞선 원본의 작업 경로가 남지 않게 초기화합니다.
+- name: 이번 수집용 임시 경로 초기화
+  ansible.builtin.set_fact:
+    source_export: {}
+- name: 관리자 사본 준비 후 일반 계정으로 rsync 수집
+  block:
+    - name: 원본의 보호된 파일을 수집용 사본으로 준비
+      ansible.builtin.include_tasks: prepare-source.yml
+      when: nginx_source_use_sudo | bool
+    # 실행 로그에 표시할 작업 이름입니다.
+    - name: source의 nginx 설정을 rsync로 control에 가져오기
+      # rsync로 디렉터리를 동기화합니다. pull은 수집, push는 업로드입니다.
+      ansible.posix.synchronize:
+        # 원본 서버에서 control로 가져옵니다.
+        mode: pull
+        # 전송할 원본 경로입니다. 끝의 /는 폴더 자체가 아닌 내부 내용을 전송한다는 뜻입니다.
+        src: '{{ source_export.stdout + "/nginx/" if nginx_source_use_sudo | bool else nginx_source_config_dir + "/" }}'
+        # 전송 결과 또는 생성 파일을 저장할 목적지 경로입니다.
+        dest: '{{ collection_root }}/nginx/'
+        # 전송 원본에 없는 항목을 전송 목적지에서 삭제합니다. 수집본 또는 staging 범위에 적용됩니다.
+        delete: true
+        # rsync archive 모드로 재귀 복사하며 권한·시간·심볼릭 링크 등을 보존합니다.
+        archive: true
+        # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
+        owner: false
+        # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
+        group: false
+        # Ansible에 설정된 SSH 연결 옵션을 rsync에도 전달합니다.
+        use_ssh_args: true
+        # SSH known_hosts를 이용해 접속 서버의 호스트 키를 확인합니다.
+        verify_host: true
+    # 실행 로그에 표시할 작업 이름입니다.
+    - name: source의 정적 파일 전체를 rsync로 control에 가져오기
+      # rsync로 디렉터리를 동기화합니다. pull은 수집, push는 업로드입니다.
+      ansible.posix.synchronize:
+        # 원본 서버에서 control로 가져옵니다.
+        mode: pull
+        # 전송할 원본 경로입니다. 끝의 /는 폴더 자체가 아닌 내부 내용을 전송한다는 뜻입니다.
+        src: '{{ source_export.stdout + "/static/" if nginx_source_use_sudo | bool else nginx_source_static_dir + "/" }}'
+        # 전송 결과 또는 생성 파일을 저장할 목적지 경로입니다.
+        dest: '{{ collection_root }}/static/'
+        # 전송 원본에 없는 항목을 전송 목적지에서 삭제합니다. 수집본 또는 staging 범위에 적용됩니다.
+        delete: true
+        # rsync archive 모드로 재귀 복사하며 권한·시간·심볼릭 링크 등을 보존합니다.
+        archive: true
+        # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
+        owner: false
+        # rsync에서 원본 소유자·그룹을 강제로 보존하지 않습니다.
+        group: false
+        # Ansible에 설정된 SSH 연결 옵션을 rsync에도 전달합니다.
+        use_ssh_args: true
+        # SSH known_hosts를 이용해 접속 서버의 호스트 키를 확인합니다.
+        verify_host: true
+  # 수집 도중 실패해도 생성한 사본은 삭제합니다. 강제 종료·연결 단절 시에는 수동 정리가 필요할 수 있습니다.
+  always:
+    - name: 원본 임시 사본 정리
+      ansible.builtin.include_tasks: cleanup-source.yml
+      when:
+        - nginx_source_use_sudo | bool
+        - source_export.stdout is defined
+        - source_export is succeeded
 # 실행 로그에 표시할 작업 이름입니다.
 - name: 수집 성공 표시
   # 지정한 내용을 파일로 기록합니다. 여기서는 수집 완료 표시를 만듭니다.

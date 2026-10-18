@@ -32,3 +32,7 @@ minimum_free_bytes: 1073741824
 bootstrap_packages: [rsync, curl, acl, java-11-openjdk-headless]
 # Java 11을 명시적으로 사용할 경로입니다. 시스템의 기본 Java 선택은 변경하지 않습니다.
 java_home: /usr/lib/jvm/jre-11-openjdk
+
+# true이면 원본에서 su → sudo로 nginx 설정·static 사본을 만든 뒤 일반 계정으로 수집합니다.
+# 원본 SSH 계정이 모든 파일을 읽을 수 있으면 false로 직접 수집할 수 있습니다.
+nginx_source_use_sudo: true

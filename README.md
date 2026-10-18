@@ -21,17 +21,18 @@ source:/usr/share/nginx/html/  → control:/workspace/collected/static/
                           /etc/nginx/ + /usr/share/nginx/html/
 ```
 
-Mac의 `workspace/`가 control의 `/workspace`에 연결됩니다. 수집본은 한 벌만 유지합니다. rsync는 설정과 정적 파일을 각각 동기화하며, 원본에서 삭제된 파일은 수집 및 업로드용 폴더에서도 제거합니다. 원본 서버의 파일을 변경하지 않습니다.
+Mac의 `workspace/`가 control의 `/workspace`에 연결됩니다. 수집본은 한 벌만 유지합니다. rsync는 설정과 정적 파일을 각각 동기화하며, 원본에서 삭제된 파일은 수집 및 업로드용 폴더에서도 제거합니다. 원본 nginx 설정과 정적 파일의 내용·권한은 변경하지 않습니다. 관리자 수집 모드에서는 별도 임시 사본을 생성한 뒤 정리합니다.
 
 source의 nginx 설정은 `/usr/share/nginx/html`을 root로 사용합니다. `/`는 HTML을, `/static/app.css`는 CSS 파일을 제공합니다. 타겟의 초기 응답은 `new target: before deployment`입니다. 실제 운영 서버에서는 `nginx -T`와 `root`·`alias`를 확인해 경로를 맞춰야 합니다. `/etc/nginx/` 밖의 인증서나 모듈, 다른 웹 루트는 자동 수집되지 않습니다.
 
 ## 계정
 
-- source의 `ansible`: 설정·정적 파일을 읽는 SSH 계정
+- source의 `ansible`: SSH 및 수집용 사본을 읽는 계정, sudo 권한 없음
+- source의 `adminuser`: su 전환 후 sudo로 인증서를 포함한 수집용 사본을 준비하는 계정
 - 타겟의 `deploy`: SSH 및 업로드 전용, sudo 권한 없음
 - 타겟의 `adminuser`: su 전환용, wheel 그룹 소속이며 비밀번호로 sudo 사용
 
-타겟은 deploy만 SSH 접속할 수 있습니다. 실습용 adminuser 비밀번호는 두 타겟에서 동일하고 아래 명령으로 확인합니다. 실제 운영 비밀번호를 사용하지 마세요.
+타겟은 deploy만 SSH 접속할 수 있습니다. 실습용 adminuser 비밀번호는 source와 두 타겟에서 동일하고 아래 명령으로 확인합니다. 실제 운영 비밀번호를 사용하지 마세요.
 
 ```sh
 cat .lab/adminuser_password
@@ -58,7 +59,7 @@ cd /Users/hyun/Study/ansible
 /opt/homebrew/bin/docker-compose exec control ansible-playbook setup.yml
 ```
 
-사전 검사 → 누락 패키지·Java 11 설치 → 수집 → 업로드 → su 전환 → sudo로 설정·정적 파일 복사 및 교체 → nginx -t → reload → HTML·CSS HTTP 200 확인 순서입니다. 설치 단계와 최종 반영 단계에서 각각 관리자 계정명과 su 및 sudo 비밀번호를 입력합니다. 실습에서는 두 비밀번호가 같습니다.
+인증 정보 입력 → 사전 검사 → 누락 패키지·Java 11 설치 → 수집 → 업로드 → su 전환 → sudo로 설정·정적 파일 복사 및 교체 → nginx -t → reload → HTML·CSS HTTP 200 확인 순서입니다. 시작 시 원본과 대상의 관리자 계정명·su 비밀번호·sudo 비밀번호를 각각 한 번 입력합니다. 대상 정보는 install과 apply에서 재사용하므로 같은 실행 안에서 다시 묻지 않습니다. 실습에서는 source와 target 모두 adminuser와 같은 로컬 비밀번호를 쓰지만, 입력과 보관은 원본/대상으로 분리합니다.
 
 ## 단계별 실행
 
@@ -79,13 +80,27 @@ cd /Users/hyun/Study/ansible
 /opt/homebrew/bin/docker-compose exec control ansible-playbook apply.yml
 ```
 
-완료한 단계를 건너뛰려면 필요한 플레이북만 실행합니다. `setup.yml`은 항상 사전 검사부터 다시 실행합니다. `apply.yml --limit target`으로 한 대만 먼저 반영할 수도 있습니다.
+완료한 단계를 건너뛰려면 필요한 플레이북만 실행합니다. `setup.yml`은 항상 인증 입력과 사전 검사부터 다시 실행합니다. `apply.yml --limit target`으로 한 대만 먼저 반영할 수도 있습니다.
 
-수집 시작 시 `.complete` 표시를 지우고 설정과 정적 파일 모두 성공했을 때 다시 만듭니다. 업로드는 이 표시를 확인합니다. 수집·업로드·반영은 순서대로 실행하고 동시에 진행하지 않습니다.
+수집 시작 시 `.complete` 표시를 지우고 설정·정적 파일 수집과 원본 임시 사본 정리까지 성공했을 때 다시 만듭니다. 업로드는 이 표시를 확인합니다. 수집·업로드·반영은 순서대로 실행하고 동시에 진행하지 않습니다.
 
 최종 반영은 한 대씩 처리합니다. su는 Ansible become으로, sudo는 `sudo -S` 표준 입력 인증으로 처리합니다. 비밀번호 관련 명령은 no_log로 숨기고 명령행 인자에 비밀번호를 넣지 않습니다. 계정 간 임시 파일 접근을 위해 acl을 설치합니다.
 
 기존 설정 및 정적 파일은 각 작업 디렉터리 옆의 `.backup` 경로로 보관합니다. 복사·배치·nginx 검사·reload 블록에서 실패하면 이미 백업한 항목을 복구하고 중단합니다. 이후 HTTP 확인 실패는 자동 원복하지 않습니다. 여러 서버 전체를 일괄 원복하지 않으며 앞서 성공한 서버는 유지됩니다. 백업과 진단용 작업 폴더는 자동 삭제하지 않습니다.
+
+## 인증 입력과 보호된 인증서 수집
+
+`setup.yml`은 원본 정보와 대상 정보를 각각 한 번만 입력받습니다. `fetch.yml` 단독 실행은 원본 정보만, `install.yml` 또는 `apply.yml` 단독 실행은 대상 정보만 입력받습니다. `preflight.yml`과 `upload.yml`은 관리자 정보를 묻지 않습니다. 입력값은 localhost의 실행 중 메모리 fact로 공유하며 `cacheable: false`와 `no_log`를 사용합니다. 다음 ansible-playbook 실행에서는 다시 입력합니다. 비밀번호 파일이나 Vault를 자동 생성하지 않습니다.
+
+기본값 `nginx_source_use_sudo: true`에서는 일반 SSH 계정 → su 관리자 → sudo 순서로 `/var/tmp/ansible-nginx.*`에 nginx 설정과 static 사본을 만듭니다. `/etc/nginx/SSL_2026` 안의 실제 인증서·개인키도 포함합니다. 사본의 소유자만 SSH 계정으로 바꾸고 바깥 임시 폴더는 0700으로 제한한 뒤 일반 계정의 rsync로 control에 수집합니다. 원본 파일의 소유자·권한은 그대로 유지합니다. root 소유 0600 개인키도 이 방식으로 수집할 수 있습니다.
+
+사본은 수집 성공·실패 후 always 작업으로 제거합니다. 강제 종료나 연결 단절로 정리 작업 자체가 실행되지 못한 경우에는 원본의 임시 경로를 확인해 수동 정리해야 합니다. 사본을 만드는 동안 원본이 바뀌면 일관된 시점의 백업을 보장하지 않으므로 설정 변경·인증서 교체와 겹치지 않게 수집하세요. 임시 사본을 위한 원본 디스크 여유 공간도 필요합니다.
+
+심볼릭 링크는 링크 자체를 보존합니다. `/etc/nginx` 밖을 가리키는 인증서 링크의 실제 대상은 별도로 준비해야 합니다. control의 collected, 대상 staging 및 백업에는 개인키가 포함될 수 있으므로 접근 권한과 Git 제외를 유지하세요. root 전용 사본 준비는 nginx role에만 적용하며 common_services는 기존처럼 일반 계정으로 읽습니다.
+
+원본 SSH 계정이 모든 nginx 파일을 읽을 수 있고 관리자 사본이 필요 없다면 environment.yml의 nginx_source_use_sudo를 false로 바꾸세요. 이 경우 원본 관리자 입력과 임시 사본 준비를 생략합니다. 관리자 모드의 원본 nginx 경로 검사는 fetch에서 sudo로 수행하므로 preflight 단독 성공만으로 인증서 접근 권한까지 검증한 것은 아닙니다.
+
+대화형 입력에는 `docker-compose exec control ...`을 사용합니다. 비대화형 자동화가 필요하면 Ansible Vault 등으로 source_admin_user/source_admin_su_password/source_admin_sudo_password와 admin_user/admin_su_password/admin_sudo_password 변수를 제공할 수 있습니다. 비밀번호를 명령행에 직접 적거나 공개 저장소에 저장하지 마세요.
 
 ## 패키지 준비와 Java 11
 
