@@ -1,0 +1,43 @@
+---
+- name: 운영 서버의 현재 nginx 설정 수집
+  hosts: config_sources
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: control에 수집본 보관 디렉터리 준비
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/snapshots"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+
+    - name: 이번 구축에 사용할 별도 수집 디렉터리 생성
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ playbook_dir }}/snapshots"
+        prefix: "nginx-{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}-"
+      register: snapshot
+      delegate_to: localhost
+
+    - name: source의 nginx 설정을 rsync로 control에 가져오기
+      ansible.posix.synchronize:
+        mode: pull
+        src: /etc/nginx/
+        dest: "{{ snapshot.path }}/nginx/"
+        archive: true
+        owner: false
+        group: false
+        use_ssh_args: true
+        verify_host: true
+
+    - name: 수집 성공 표시
+      ansible.builtin.copy:
+        content: "source={{ inventory_hostname }}\n"
+        dest: "{{ snapshot.path }}/.complete"
+        mode: '0600'
+      delegate_to: localhost
+
+    - name: 수집본 위치 안내
+      ansible.builtin.debug:
+        msg: "수집 완료: {{ snapshot.path }}/nginx/"

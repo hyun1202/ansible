@@ -36,15 +36,29 @@ docker-compose exec control ansible lab -m ansible.builtin.ping
 
 한 대만 확인하려면 `lab` 대신 `target` 또는 `target2`를 지정합니다.
 
-## 운영 서버 역할의 source
+## 운영 서버 역할의 source에서 최신 설정 수집
 
-source에서 예제 nginx를 실행합니다. 신규 구축 시 source의 현재 `/etc/nginx/`를 control로 가져온 뒤, 동일한 수집본을 두 신규 서버에 적용하는 흐름을 실습합니다. 수집 자동화는 다음 단계에서 추가합니다.
+신규 구축을 시작할 때마다 source의 현재 `/etc/nginx/`를 rsync로 control에 가져옵니다.
+
+`fetch-nginx.yml` 플레이북의 `ansible.posix.synchronize` 모듈이 rsync를 실행합니다. `mode: pull`은 source → control 방향이며 별도 쉘 스크립트는 필요하지 않습니다. 필요한 컬렉션은 control 이미지에 설치됩니다.
+
+```sh
+docker-compose exec control ansible-playbook -i inventory-source.ini fetch-nginx.yml
+```
+
+수집 결과는 Mac의 `workspace/snapshots/nginx-<UTC 시각>-<고유값>/nginx/`에 저장됩니다. 성공한 수집 폴더에는 `.complete` 파일이 생깁니다. 매번 새 폴더에 수집하므로 기존 수집본의 오래된 파일이 섞이지 않습니다. 심볼릭 링크를 보존하며 source의 설정은 변경하지 않습니다. 수집 중 원본 파일이 바뀌면 한 시점의 일관된 설정이 아닐 수 있으므로, 실제 구축에서는 설정 변경이 없는 시점에 수집합니다.
+
+예제 설정은 source의 `/etc/nginx/sites-available/legacy-app.conf`입니다. source에서 nginx를 실행하는 데 사용합니다. 로컬 `source/legacy-app.conf`는 컨테이너 초기 구성용이고, rsync는 실행 중인 source 내부의 파일을 읽습니다.
+
+이후 단계는 수집본 확인 → 신규 서버별 값 조정 → target/target2에 nginx 설치 및 설정 배치 → 설정 검사 및 실행입니다. 한 번 구축할 때는 같은 수집본으로 두 신규 서버를 구성합니다. 현재는 수집까지만 구현되어 있습니다.
 
 ## 파일과 작업 위치
 
 Mac의 `workspace/` 폴더가 control의 `/workspace`에 연결됩니다. 플레이북은 Mac에서 작성하고 control 안에서 실행하면 됩니다.
 
 - `workspace/inventory.ini`: 대상 서버 목록
+- `workspace/inventory-source.ini`: 설정 수집 전용 source 목록
+- `workspace/fetch-nginx.yml`: 최신 nginx 설정 수집 플레이북
 - `workspace/ansible.cfg`: 접속과 실행 기본 설정
 - `.lab/`: 이 실습만을 위한 SSH 키와 대상 서버의 공개키. Git에 넣거나 공유하지 않습니다.
 
@@ -70,3 +84,5 @@ docker-compose start
 ## 실습 범위
 
 파일·권한·계정·패키지·설정 템플릿·nginx 설정 검사 등을 실습합니다. 일반 컨테이너이므로 systemd, OS 재부팅, 부팅 시 서비스 자동 시작의 최종 검증은 실제 신규 Linux 서버에서 진행합니다. Apple Silicon에서는 ARM64로 실행되므로 이후 바이너리 설치 시 아키텍처를 확인합니다.
+
+수집 플레이북은 실행할 때마다 새 수집본을 만드므로 매번 `changed`가 발생합니다. 이후 신규 서버 구성 플레이북에서는 같은 수집본을 반복 적용해 멱등성을 확인합니다.
