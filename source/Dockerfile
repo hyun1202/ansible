@@ -9,4 +9,7 @@ COPY source/entrypoint.sh /usr/local/bin/lab-source-entrypoint
 COPY target/nginx.conf /etc/nginx/nginx.conf
 COPY source/html/ /usr/share/nginx/html/
 RUN chmod +x /usr/local/bin/lab-sshd-entrypoint /usr/local/bin/lab-source-entrypoint
+COPY source/service-template/ /opt/lab-service-template/
+COPY source/prepare-services.sh /usr/local/bin/lab-prepare-services
+RUN sh /usr/local/bin/lab-prepare-services
 ENTRYPOINT ["/usr/local/bin/lab-source-entrypoint"]

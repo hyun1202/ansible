@@ -93,7 +93,7 @@ cd /Users/hyun/Study/ansible
 
 SSH 접속 계정, su 가능한 관리자 계정과 sudo 권한, 호환되는 Python 및 계정 간 Ansible 임시 파일 접근에 필요한 ACL 설정은 미리 준비해야 합니다. 필요한 서비스 소유자·그룹도 자동 생성하지 않습니다. 실제 systemd 서버에서는 설치 단계가 nginx를 enable --now로 준비합니다. Docker 실습은 entrypoint가 nginx를 실행합니다. 공통 서비스의 부팅 시 자동 실행 등록은 포함하지 않습니다.
 
-사전 검사는 원본 폴더·스크립트 접근, Rocky 8 여부, 서비스 계정·그룹, 대상 파일 시스템 여유 공간을 확인합니다. minimum_free_bytes는 기본 1 GiB의 하한선이며 실제 파일 크기를 계산한 용량 보장은 아닙니다. 백업과 수집본 크기에 맞춰 조정하세요. 실제 서비스 폴더와 스크립트가 없는 현재 실습 source에서는 공통 서비스 검사가 실패하는 것이 정상입니다. nginx만 연습하려면 enabled_roles를 [nginx]로 지정하세요.
+사전 검사는 원본 폴더·스크립트 접근, Rocky 8 여부, 서비스 계정·그룹, 대상 파일 시스템 여유 공간을 확인합니다. minimum_free_bytes는 기본 1 GiB의 하한선이며 실제 파일 크기를 계산한 용량 보장은 아닙니다. 백업과 수집본 크기에 맞춰 조정하세요. 실습 source에는 네 서비스의 모의 프로세스와 start.sh·stop.sh·check.sh, 복사 전용 deploy.sh가 준비됩니다. nginx만 연습하려면 enabled_roles를 [nginx]로 지정하세요.
 
 ## 직접 확인
 
@@ -145,7 +145,7 @@ nginx 경로를 바꾸면 nginx.conf 안의 include/root/pid 경로 및 nginx �
 
 ### 서비스 추가: vars/services.yml
 
-`services.yml`에는 /home/deploy 아래의 loki, alloy, scouter, node_exporter, deploy 폴더를 가정한 예시 다섯 개가 들어 있습니다. 실제 서버에 이 폴더들을 생성하지는 않았습니다. 전체 실행 전에 경로와 제외 목록을 확인하세요. Loki·Alloy·Scouter·node exporter는 기존 폴더의 `./stop.sh`로 종료하고 새 폴더의 `./start.sh`로 시작합니다. 두 스크립트에 실행 권한이 필요합니다. deploy 항목은 파일만 배치합니다. check_argv는 아직 비어 있어 정상 동작 검증은 생략하며 결과에도 이를 명시합니다. 공통 서비스를 건너뛰려면 common_services: []로 바꾸거나 environment.yml의 enabled_roles를 [nginx]로 지정합니다. 아래도 설명용 예시입니다.
+`services.yml`에는 /home/deploy 아래의 loki, alloy, scouter, node_exporter, deploy 폴더를 가정한 예시 다섯 개가 들어 있습니다. Docker source에는 이 경로에 실습 파일을 생성합니다. 실제 서버에 적용할 때는 경로와 제외 목록을 확인하세요. Loki·Alloy·Scouter·node exporter는 기존 폴더의 `./stop.sh`로 종료하고 새 폴더의 `./start.sh`로 시작합니다. 두 스크립트에 실행 권한이 필요합니다. deploy 항목은 파일만 배치합니다. 네 실습 서비스의 check_argv는 ./check.sh로 설정되어 HTTP 응답과 프로세스를 확인합니다. 실제 제품에 적용할 때는 정상 확인 명령을 맞춰야 합니다. 공통 서비스를 건너뛰려면 common_services: []로 바꾸거나 environment.yml의 enabled_roles를 [nginx]로 지정합니다. 아래도 설명용 예시입니다.
 
 ```yaml
 common_services:
@@ -172,6 +172,23 @@ common_services:
 공통 서비스는 기존 폴더가 있으면 그 폴더의 stop.sh가 성공한 뒤 폴더 전체를 작업 경로의 previous로 옮겨 백업합니다. 준비한 수집본으로 최종 폴더를 통째로 교체하므로 원본에서 사라진 파일이나 제외한 로그·데이터는 새 폴더에 남지 않습니다. 기존 내용은 백업에 보관합니다. stop.sh는 이미 중지된 경우에도 성공하도록 작성해야 하며, start.sh는 서비스를 시작한 뒤 종료되어야 합니다. 종료 명령이 실패하면 교체하지 않습니다. 교체·시작·검증 실패 시 자동 원복이나 재기동을 하지 않고 작업·백업 경로를 알립니다. 해당 서비스가 중지된 상태일 수 있으므로 경로를 확인한 뒤 수동 복구합니다. nginx는 기존 검사·원복 동작을 유지합니다.
 
 일반 파일의 위치만 바뀌면 변수 파일만 수정하면 됩니다. Loki와 Alloy, Scouter, node exporter는 각 서비스마다 role이나 fetch 파일을 추가하지 않고 목록에 항목을 추가합니다.
+
+## 공통 서비스 실습 원본
+
+source 이미지 빌드 시 `/home/deploy/loki`, `alloy`, `scouter`, `node_exporter`에 동일한 실습용 HTTP 프로그램과 start.sh·stop.sh·check.sh를 만듭니다. 실제 Loki·Alloy·Scouter·node exporter 바이너리가 아니며, 파일 수집·전체 교체·계정별 실행·정상 확인을 연습하기 위한 모의 서비스입니다. source에서는 파일을 제공하고, setup.yml을 실행하면 target과 target2에서 기동합니다.
+
+각 서비스의 service.json에 이름과 포트가 있습니다. 포트는 순서대로 19101~19104이며 각 컨테이너의 127.0.0.1에만 바인딩합니다. logs에는 실행 로그와 PID가 생기고 수집에서 제외됩니다. 원본의 logs/source-only.log가 수집본에 없는지도 확인할 수 있습니다. `/home/deploy/deploy/deploy.sh`는 복사만 하며 자동 실행하지 않습니다.
+
+전체 실습 후 다음 명령으로 target을 확인할 수 있습니다. target2도 같은 방식입니다.
+
+```sh
+docker-compose exec control ssh deploy@target /home/deploy/loki/check.sh
+docker-compose exec control ssh deploy@target /home/deploy/alloy/check.sh
+docker-compose exec control ssh deploy@target /home/deploy/scouter/check.sh
+docker-compose exec control ssh deploy@target /home/deploy/node_exporter/check.sh
+```
+
+두 번째 setup.yml 실행에서는 기존 서비스의 stop.sh → 기존 폴더 백업 → 새 수집본 배치 → start.sh → check.sh 순서를 연습할 수 있습니다. 실습용 스크립트는 이미 시작되었거나 중지된 경우에도 성공합니다. 실제 서비스의 프로토콜·Java 호환성·운영 설정은 이 모의 프로세스로 검증하지 않습니다.
 
 ## 중지와 실습 범위
 
