@@ -4,9 +4,11 @@
   gather_facts: false
   any_errors_fatal: true
   become: false
+  vars:
+    workspace_root: "{{ playbook_dir | dirname }}"
   vars_files:
-  - vars/environment.yml
-  - vars/services.yml
+  - ../vars/environment.yml
+  - ../vars/services.yml
   pre_tasks:
   - name: 공통 수집본의 원본 서버가 한 대인지 확인
     ansible.builtin.assert:

@@ -97,6 +97,7 @@ HTML에 `legacy nginx configuration v1`이 표시되고 CSS가 응답하면 정�
 workspace/
 ├─ setup.yml                    # 전체 실행
 ├─ fetch.yml / upload.yml / apply.yml
+├─ v1/                         # 이전 nginx 전용 진입점
 ├─ vars/
 │  ├─ environment.yml           # role 선택, 공통 경로, nginx 경로·검증 주소
 │  └─ services.yml              # Loki·Alloy·Scouter·node exporter·deploy 목록
@@ -110,7 +111,19 @@ workspace/
                fetch_service.yml, upload_service.yml, apply_service.yml
 ```
 
-상위 플레이북은 대상 서버와 단계, 비밀번호 입력을 담당합니다. role은 실제 작업을 담당합니다. nginx 전용 기존 명령인 setup-nginx.yml, fetch-nginx.yml, upload-nginx.yml, apply-nginx.yml도 호환용으로 유지하며 common_services는 실행하지 않습니다.
+상위의 setup.yml, fetch.yml, upload.yml, apply.yml은 현재 사용하는 진입 플레이북입니다. 대상 서버와 단계, 비밀번호 입력을 담당하며 role이 실제 작업을 수행합니다.
+
+이전 nginx 전용 진입점 네 개는 `workspace/v1/`로 옮겼습니다. 과거 구현 전체의 복사본이 아니라 현재 nginx role을 참조하는 호환용 진입점이며 common_services는 실행하지 않습니다. role 검색 경로는 ansible.cfg에 지정했고, v1에서도 공통 vars와 기존 collected 폴더를 사용합니다.
+
+```sh
+# 이전 nginx 전용 전체 실행
+/opt/homebrew/bin/docker-compose exec control ansible-playbook -i inventory.ini -i inventory-source.ini v1/setup-nginx.yml
+
+# 이전 nginx 전용 최종 반영만 실행
+/opt/homebrew/bin/docker-compose exec control ansible-playbook v1/apply-nginx.yml
+```
+
+일반적으로는 상위 setup.yml 또는 fetch.yml/upload.yml/apply.yml을 사용하면 됩니다.
 
 ### 경로 변경: vars/environment.yml
 

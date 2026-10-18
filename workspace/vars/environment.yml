@@ -3,7 +3,7 @@
 enabled_roles: [nginx, common_services]
 
 # control과 신규 서버에서 사용하는 공통 경로
-collection_root: "{{ playbook_dir }}/collected"
+collection_root: "{{ workspace_root | default(playbook_dir) }}/collected"
 staging_root: /home/deploy/staging
 
 # nginx 원본·대상 경로 (같으면 source 변수는 아래 값을 그대로 참조)

@@ -4,9 +4,11 @@
   gather_facts: false
   any_errors_fatal: true
   become: false
+  vars:
+    workspace_root: "{{ playbook_dir | dirname }}"
   vars_files:
-  - vars/environment.yml
-  - vars/services.yml
+  - ../vars/environment.yml
+  - ../vars/services.yml
   tasks:
   - name: 선택한 role의 단계 실행
     ansible.builtin.include_role:
