@@ -114,19 +114,21 @@ install은 staging과 없는 서비스 폴더를 지정한 소유자·그룹으�
 
 nginx는 개발자 접속에 sudo become을 적용해 업로드 파일을 root 작업 폴더에 복사하고, 기존 설정·정적 파일을 백업한 뒤 디렉터리를 교체합니다. 이동에는 mv를 사용합니다. nginx -t 성공 후 reload하며, 반영 블록 실패 시 백업한 항목을 복구합니다. HTTP 확인은 그 블록 밖이므로 HTTP 확인 실패에는 자동 원복하지 않습니다. 실제 systemd 서버에서는 install이 nginx를 자동 시작하도록 준비하고, 컨테이너에서는 entrypoint가 실행합니다.
 
-공통 서비스는 deploy 계정으로 현재 폴더의 stop.sh를 실행하고, 내용을 staging의 서비스 작업 폴더 안 previous에 백업합니다. `/srv`에 쓰기 권한이 없어도 동작하도록 서비스 디렉터리 자체는 유지하고 내부 파일·하위 폴더를 교체합니다. 따라서 제외한 기존 로그·데이터와 원본에 없는 파일은 새 서비스 폴더에 남지 않고 백업에만 남습니다. 교체 후 start.sh, check.sh 순서로 실행합니다. 실패 시 자동 원복·재기동하지 않고 백업 위치를 안내합니다. 백업과 대상 업로드 파일은 자동 삭제하지 않습니다.
+공통 서비스는 deploy 계정으로 현재 폴더의 stop.sh를 실행하고, 내용을 staging의 서비스 작업 폴더 안 previous에 백업합니다. 서비스 폴더의 상위 경로에 쓰기 권한이 없어도 동작하도록 서비스 디렉터리 자체는 유지하고 내부 파일·하위 폴더를 교체합니다. 따라서 제외한 기존 로그·데이터와 원본에 없는 파일은 새 서비스 폴더에 남지 않고 백업에만 남습니다. 교체 후 start.sh, check.sh 순서로 실행합니다. 실패 시 자동 원복·재기동하지 않고 백업 위치를 안내합니다. 백업과 대상 업로드 파일은 자동 삭제하지 않습니다.
 
 ## 공통 서비스 실습
 
-source 이미지에는 `/srv/loki`, `/srv/alloy`, `/srv/scouter`, `/srv/node_exporter`와 `/srv/deploy`가 준비됩니다. 앞의 네 서비스는 실제 제품 대신 가벼운 실습용 HTTP 프로세스이며 start.sh·stop.sh·check.sh를 제공합니다. 마지막 deploy.sh는 복사만 하고 자동 실행하지 않습니다.
+서비스 경로의 `~`는 키 접속 계정인 deploy의 홈(`/home/deploy`)을 뜻합니다. 개발자 sudo 계정의 홈과 혼동하지 않도록 services.yml에는 절대 경로를 적습니다. 전송용 staging은 `/srv/ansible-staging`을 사용합니다.
+
+source 이미지에는 `/home/deploy/loki`, `/home/deploy/alloy`, `/home/deploy/scouter`, `/home/deploy/node_exporter`와 `/home/deploy/deploy`가 준비됩니다. 앞의 네 서비스는 실제 제품 대신 가벼운 실습용 HTTP 프로세스이며 start.sh·stop.sh·check.sh를 제공합니다. 마지막 deploy.sh는 복사만 하고 자동 실행하지 않습니다.
 
 각 서비스는 127.0.0.1의 19101~19104 포트를 사용합니다. logs에는 PID와 실행 로그가 생기고 수집에서 제외됩니다. 시작 스크립트는 실행 후 종료되어야 하며 종료 스크립트는 이미 중지된 경우에도 성공해야 합니다. 전체 실행을 다시 하면 종료·백업·교체·재시작을 연습할 수 있습니다.
 
 ```sh
-docker-compose exec control ssh deploy@target /srv/loki/check.sh
-docker-compose exec control ssh deploy@target /srv/alloy/check.sh
-docker-compose exec control ssh deploy@target /srv/scouter/check.sh
-docker-compose exec control ssh deploy@target /srv/node_exporter/check.sh
+docker-compose exec control ssh deploy@target /home/deploy/loki/check.sh
+docker-compose exec control ssh deploy@target /home/deploy/alloy/check.sh
+docker-compose exec control ssh deploy@target /home/deploy/scouter/check.sh
+docker-compose exec control ssh deploy@target /home/deploy/node_exporter/check.sh
 ```
 
 실제 서비스에 적용할 때는 services.yml의 경로, 제외 패턴, 시작·종료·검증 명령을 수정하세요. source_path를 지정하면 대상 path와 다른 원본 경로에서 수집할 수 있습니다. check_argv가 비어 있으면 정상 동작 검증은 생략합니다.
@@ -137,4 +139,4 @@ docker-compose exec control ssh deploy@target /srv/node_exporter/check.sh
 
 일반 Docker 컨테이너이므로 실제 systemd 동작, SELinux 정책·파일 컨텍스트, 공통 서비스의 부팅 시 자동 실행은 별도 검증이 필요합니다. Mac 실습은 ARM64이므로 실제 서버의 CPU 아키텍처·nginx 버전·모듈도 확인해야 합니다. 모의 서비스로 실제 제품의 설정이나 Java 호환성이 검증되지는 않습니다.
 
-Compose stop/start는 컨테이너 내부 파일을 유지하지만 down 또는 재생성은 초기화할 수 있습니다. Mac의 workspace와 .lab은 유지됩니다. 예전 /home/deploy 경로의 실습 파일은 자동 삭제하지 않습니다.
+Compose stop/start는 컨테이너 내부 파일을 유지하지만 down 또는 재생성은 초기화할 수 있습니다. Mac의 workspace와 .lab은 유지됩니다. 이전 실습에서 /srv 아래에 만든 서비스 파일은 자동 삭제하지 않습니다.

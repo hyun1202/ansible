@@ -9,7 +9,7 @@ fi
 chmod 755 /home/deploy
 port=19101
 for service in loki alloy scouter node_exporter; do
-    destination=/srv/$service
+    destination=/home/deploy/$service
     if [ -e "$destination" ]; then
         echo "기존 경로를 덮어쓰지 않습니다: $destination" >&2
         exit 1
@@ -26,15 +26,15 @@ for service in loki alloy scouter node_exporter; do
     chown -R deploy:deploy "$destination"
     port=$((port + 1))
 done
-if [ -e /srv/deploy ]; then
-    echo '기존 /srv/deploy는 덮어쓰지 않습니다.' >&2
+if [ -e /home/deploy/deploy ]; then
+    echo '기존 /home/deploy/deploy는 덮어쓰지 않습니다.' >&2
     exit 1
 fi
-install -d -m 755 /srv/deploy
-cat > /srv/deploy/deploy.sh <<'EOF'
+install -d -m 755 /home/deploy/deploy
+cat > /home/deploy/deploy/deploy.sh <<'EOF'
 #!/bin/sh
 # 이 파일은 복사 실습용이며 플레이북이 자동 실행하지 않습니다.
 printf '실습용 deploy.sh: 실제 JAR 배포는 수행하지 않습니다.\n'
 EOF
-chmod 755 /srv/deploy/deploy.sh
-chown -R deploy:deploy /srv/deploy
+chmod 755 /home/deploy/deploy/deploy.sh
+chown -R deploy:deploy /home/deploy/deploy
