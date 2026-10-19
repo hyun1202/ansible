@@ -8,7 +8,9 @@
   vars_files: [vars/environment.yml, vars/services.yml]
   pre_tasks:
     - name: 대상 개발자 접속 준비
-      ansible.builtin.import_tasks: tasks/target-credentials.yml
+      ansible.builtin.import_tasks: tasks/credentials.yml
+      vars:
+        credential_scope: target
     - name: 대상 사전 검사
       ansible.builtin.import_tasks: tasks/preflight-target.yml
   tasks:

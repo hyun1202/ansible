@@ -8,13 +8,13 @@
   vars_files: [vars/environment.yml]
   tasks:
     - name: 원본 개발자 정보 입력
-      ansible.builtin.include_tasks: tasks/read-credentials.yml
+      ansible.builtin.include_tasks: tasks/credentials.yml
       vars:
         credential_scope: source
       run_once: true
       when: '"nginx" in enabled_roles and nginx_source_use_sudo | bool'
     - name: 대상 개발자 정보 입력
-      ansible.builtin.include_tasks: tasks/read-credentials.yml
+      ansible.builtin.include_tasks: tasks/credentials.yml
       vars:
         credential_scope: target
       run_once: true

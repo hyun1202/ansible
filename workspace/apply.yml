@@ -17,7 +17,9 @@
   # 이 목록의 작업을 위에서 아래 순서로 실행합니다.
   pre_tasks:
     - name: nginx 개발자 접속 준비
-      ansible.builtin.import_tasks: tasks/target-credentials.yml
+      ansible.builtin.import_tasks: tasks/credentials.yml
+      vars:
+        credential_scope: target
       when: '"nginx" in enabled_roles'
   tasks:
   # 이 항목의 이름입니다.

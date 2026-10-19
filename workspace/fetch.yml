@@ -18,7 +18,9 @@
   pre_tasks:
   # nginx의 개인키를 읽기 위한 원본 개발자 접속 정보입니다. 일반 rsync 계정은 그대로 유지합니다.
   - name: 원본 개발자 접속 준비
-    ansible.builtin.import_tasks: tasks/source-credentials.yml
+    ansible.builtin.import_tasks: tasks/credentials.yml
+    vars:
+      credential_scope: source
     when: '"nginx" in enabled_roles and nginx_source_use_sudo | bool'
   # 실행 로그에 표시할 작업 이름입니다.
   - name: 공통 수집본의 원본 서버가 한 대인지 확인
