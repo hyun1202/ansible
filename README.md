@@ -20,7 +20,7 @@ source와 target은 Rocky 8, control은 Ubuntu 24.04입니다. Ansible 실행용
 | common_services 백업·교체·실행 | deploy + SSH 키 | sudo 없음 |
 | 패키지 설치·최초 폴더 준비 | 입력한 개발자 계정 + SSH 비밀번호 | Ansible become으로 sudo |
 
-개발자 계정은 서버에 직접 SSH 접속할 수 있고 sudo 권한이 있어야 합니다. 실습에서는 개발자 예시로 adminuser를 사용하며, source와 target 모두 같은 `.lab/adminuser_password`를 사용합니다. 실제 서버에서는 본인 계정을 입력합니다. 원본과 대상 접속 정보는 별도로 받습니다.
+개발자 계정은 서버에 직접 SSH 접속할 수 있고 sudo 권한이 있어야 합니다. 실습에서는 개발자 예시로 adminuser를 사용하며, source와 target 모두 같은 `.lab/adminuser_password`를 사용합니다. 계정명에는 기본값이 없으며 반드시 입력해야 합니다. 실제 서버에서는 본인 계정을 입력합니다. 원본과 대상 접속 정보는 별도로 받습니다.
 
 ```sh
 # 실습용 비밀번호 확인 (실제 운영 비밀번호를 이 파일에 저장하지 마세요)
